@@ -232,6 +232,35 @@ def get_login_rate_limiter() -> LoginRateLimiter:
     return LoginRateLimiter(get_settings())
 
 
+async def check_sync_rate_limit(account_id: str) -> bool:
+    """Returns True if the account may sync now, False if rate-limited.
+
+    Counter: ``rl:sync:account:{account_id}``, 10 requests / 60 seconds.
+    Fail-closed: if Redis is unreachable the request is denied, matching
+    the login limiter. Refusing sync is preferable to silently disabling
+    the protection against AnkiWeb abuse.
+    """
+
+    try:
+        client = await _ensure_client()
+        incr = client.register_script(_LUA_INCR_SCRIPT)
+        count = await incr(
+            keys=[f"rl:sync:account:{account_id}"],
+            args=[60_000],
+        )
+    except RuntimeError as exc:
+        logger.error("Sync rate limiter unavailable, blocking request: %s", exc)
+        return False
+    if count > 10:
+        logger.warning(
+            "Sync rate limit hit: account_id=%s count=%d max=10",
+            account_id,
+            count,
+        )
+        return False
+    return True
+
+
 def client_ip(request: Request, settings: Settings | None = None) -> str:
     """Returns the best-effort client IP for the incoming request.
 

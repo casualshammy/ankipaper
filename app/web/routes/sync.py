@@ -25,6 +25,7 @@ from app.sync.media_http import sync_media_direct
 from app.sync.state import SyncState
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
+from app.web.ratelimit import check_sync_rate_limit
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -182,6 +183,9 @@ async def sync_post(
     host_key = account.host_key()
     if not host_key:
         return RedirectResponse("/login?reason=auth_expired", status_code=303)
+
+    if not await check_sync_rate_limit(account.id):
+        return RedirectResponse("/?sync_error=rate_limited", status_code=303)
 
     # If a sync is already running — re-show the indicator.
     if account.sync_state.status == "running":
