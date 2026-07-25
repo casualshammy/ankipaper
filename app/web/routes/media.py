@@ -2,7 +2,8 @@
 
 Anki встраивает в HTML карточки ссылки на медиа-файлы через
 ``src="filename"`` (relative). После переписывания в ``/ms/<filename>``
-этот роут отдаёт файлы из директории ``collection.media/``.
+этот роут отдаёт файлы из директории ``collection.media/`` аккаунта,
+к которому привязан cookie.
 """
 
 from __future__ import annotations
@@ -10,32 +11,34 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from app.storage.collection import get_collection_manager
+from app.storage.account import Account
+from app.web.deps import get_current_account
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_MEDIA_DIR_NAME = "collection.media"
 
+def _media_dir(account: Account) -> Path:
+    """Возвращает путь к директории медиа-файлов аккаунта."""
 
-def _media_dir() -> Path:
-    """Возвращает путь к директории медиа-файлов коллекции."""
-
-    col_path = get_collection_manager().collection_path
-    return col_path.with_name(_MEDIA_DIR_NAME)
+    return account.media_dir()
 
 
 @router.get("/ms/{filename:path}")
-async def serve_media(filename: str) -> FileResponse:
-    """Отдаёт медиа-файл из ``collection.media/``.
+async def serve_media(
+    filename: str,
+    account: Account = Depends(get_current_account),
+) -> FileResponse:
+    """Отдаёт медиа-файл из ``collection.media/`` текущего аккаунта.
 
     Args:
         filename: относительный путь внутри ``collection.media/``
             (например, ``myimage.jpg``).
+        account: текущий аккаунт (из cookie).
 
     Raises:
         HTTPException: 404, если файла нет или путь содержит ``..``.
@@ -44,7 +47,7 @@ async def serve_media(filename: str) -> FileResponse:
     if ".." in filename.split("/") or filename.startswith("/"):
         raise HTTPException(status_code=400, detail="Invalid path")
 
-    media_root = _media_dir()
+    media_root = _media_dir(account)
     file_path = (media_root / filename).resolve()
 
     # Защита от path traversal: file_path должен остаться внутри media_root.

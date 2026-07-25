@@ -5,80 +5,26 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from app import __version__
-from app.config import get_settings
-from app.storage import get_collection_manager, secrets
+from app.storage.account import Account
 from app.sync.client import (
     AuthExpiredError,
+    SyncError as SyncClientError,
     full_download,
     try_sync,
 )
-from app.sync.client import SyncError as SyncClientError
 from app.sync.media_http import sync_media_direct
-from app.web.deps import get_session
-from app.web.session import Session
+from app.sync.state import SyncState
+from app.web.deps import get_current_account_optional
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-HOSTKEY_SECRET_NAME = "ankiweb_hostkey"
-
-
-# ---------------------------------------------------------------------------
-# Состояние media-sync
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class SyncState:
-    """Состояние текущей/последней синхронизации с AnkiWeb.
-
-    Обновляется фоновым таском, читается JSON-эндпоинтом для
-    отображения прогресс-бара на Kindle.
-    """
-
-    status: str = "idle"  # "idle" | "running" | "done" | "error"
-    phase: str = ""  # "mediaChanges" | "downloadFiles" | ""
-    current: int = 0
-    total: int = 0
-    downloaded: int = 0
-    started_at: float = 0.0
-    finished_at: float | None = None
-    error: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Возвращает словарь для JSON-сериализации."""
-
-        d = asdict(self)
-        d["elapsed"] = (
-            (self.finished_at or time.time()) - self.started_at
-            if self.started_at
-            else 0.0
-        )
-        d["percent"] = self.percent
-        return d
-
-    @property
-    def percent(self) -> int:
-        if self.total <= 0:
-            return 0
-        return max(0, min(100, int(100 * self.current / self.total)))
-
-
-_state: SyncState = SyncState()
-
-
-def get_sync_state() -> SyncState:
-    """Singleton состояния синхронизации."""
-
-    return _state
 
 
 # ---------------------------------------------------------------------------
@@ -86,15 +32,16 @@ def get_sync_state() -> SyncState:
 # ---------------------------------------------------------------------------
 
 
-def _count_cards(col) -> int:
+def _count_cards(col: Any) -> int:
     """Возвращает количество карточек в коллекции (0 — коллекция пуста)."""
 
     return int(col.card_count())
 
 
-async def _collection_is_empty(manager) -> bool:
-    """True, если в локальной коллекции нет ни одной карточки."""
+async def _collection_is_empty(account: Account) -> bool:
+    """True, если в локальной коллекции аккаунта нет ни одной карточки."""
 
+    manager = account.manager
     if not manager.has_collection():
         return True
     try:
@@ -106,14 +53,15 @@ async def _collection_is_empty(manager) -> bool:
 
 
 async def _run_media_sync_background(
+    account: Account,
     host_key: str,
     endpoint: str | None,
-    data_dir,
-    last_usn_path,
+    data_dir: Path,
+    last_usn_path: Path,
 ) -> None:
-    """Запускает media-sync в фоне, обновляя SyncState для прогресс-бара."""
+    """Запускает media-sync в фоне, обновляя SyncState аккаунта."""
 
-    state = get_sync_state()
+    state: SyncState = account.sync_state
     state.status = "running"
     state.phase = "mediaChanges"
     state.current = 0
@@ -159,23 +107,22 @@ async def _run_media_sync_background(
 
 @router.post("/sync", response_model=None)
 async def sync_post(
-    request: Request,
-    session: Session = Depends(get_session),
+    account: Account | None = Depends(get_current_account_optional),
 ) -> RedirectResponse:
-    """Запускает синхронизацию с AnkiWeb, редиректит на /sync/progress."""
+    """Запускает синхронизацию с AnkiWeb для текущего аккаунта."""
 
-    if not session.is_authenticated:
+    if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    host_key = secrets.load_secret(HOSTKEY_SECRET_NAME)
+    host_key = account.host_key()
     if not host_key:
         return RedirectResponse("/login?reason=auth_expired", status_code=303)
 
-    # Если sync уже идёт — переходим на прогресс-страницу.
-    if get_sync_state().status == "running":
-        return RedirectResponse("/sync/progress", status_code=303)
+    # Если sync уже идёт — повторно показываем индикатор.
+    if account.sync_state.status == "running":
+        return RedirectResponse("/", status_code=303)
 
-    manager = get_collection_manager()
+    manager = account.manager
 
     try:
         result = await manager.run(try_sync, host_key)
@@ -184,19 +131,19 @@ async def sync_post(
         return RedirectResponse(f"/?sync_error={exc}", status_code=303)
 
     if result.auth_expired:
-        secrets.delete_secret(HOSTKEY_SECRET_NAME)
+        account.delete_host_key()
         return RedirectResponse("/login?reason=auth_expired", status_code=303)
 
     if result.error:
         return RedirectResponse(f"/?sync_error={result.error}", status_code=303)
 
-    is_empty = await _collection_is_empty(manager)
+    is_empty = await _collection_is_empty(account)
     if is_empty:
         logger.info("Local collection is empty after sync, falling back to full download")
         try:
             full = await manager.run(full_download, host_key, result.new_endpoint)
         except AuthExpiredError:
-            secrets.delete_secret(HOSTKEY_SECRET_NAME)
+            account.delete_host_key()
             return RedirectResponse("/login?reason=auth_expired", status_code=303)
         except SyncClientError as exc:
             return RedirectResponse(f"/?sync_error={exc}", status_code=303)
@@ -209,14 +156,13 @@ async def sync_post(
 
     # Media-sync в фоне (может занять минуты). Страницы poll'ят
     # ``/sync/status.json`` и показывают индикатор в шапке.
-    settings = get_settings()
-    last_usn_path = settings.data_dir / "media.last_usn"
     asyncio.create_task(
         _run_media_sync_background(
+            account=account,
             host_key=host_key,
             endpoint=result.new_endpoint,
-            data_dir=settings.data_dir,
-            last_usn_path=last_usn_path,
+            data_dir=account.data_dir,
+            last_usn_path=account.last_usn_path(),
         )
     )
 
@@ -226,11 +172,11 @@ async def sync_post(
 
 @router.get("/sync/status.json")
 async def sync_status_json(
-    session: Session = Depends(get_session),
+    account: Account | None = Depends(get_current_account_optional),
 ) -> JSONResponse:
     """Лёгкий JSON-эндпоинт, который poll'ит индикатор в шапке (каждые 2 с)."""
 
-    if not session.is_authenticated:
+    if account is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
-    return JSONResponse(get_sync_state().to_dict())
+    return JSONResponse(account.sync_state.to_dict())

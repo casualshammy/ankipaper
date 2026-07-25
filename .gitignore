@@ -6,4 +6,4 @@ __pycache__/
 _anki_repo/
 _kindlanki-old/
 Anki-Android-main/
-data/
+.data/

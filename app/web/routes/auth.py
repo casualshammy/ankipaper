@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import __version__
-from app.storage import secrets
+from app.storage.account import get_account_store
 from app.sync.auth import AuthError, login
 from app.web.deps import get_session
 from app.web.session import Session, clear_session, write_session
@@ -17,8 +17,6 @@ from app.web.session import Session, clear_session, write_session
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-HOSTKEY_SECRET_NAME = "ankiweb_hostkey"
 
 
 @router.get("/login", response_model=None)
@@ -29,7 +27,7 @@ async def login_get(
 ) -> HTMLResponse | RedirectResponse:
     """Отображает форму логина или редиректит на главную, если уже залогинен."""
 
-    if session.is_authenticated and secrets.load_secret(HOSTKEY_SECRET_NAME):
+    if session.is_authenticated and session.account_id:
         return RedirectResponse("/", status_code=303)
 
     templates: Jinja2Templates = request.app.state.templates
@@ -38,6 +36,7 @@ async def login_get(
         "login.html",
         {
             "version": __version__,
+            "account": None,
             "reason": reason,
             "error": None,
             "username": "",
@@ -62,6 +61,7 @@ async def login_post(
             "login.html",
             {
                 "version": __version__,
+                "account": None,
                 "reason": None,
                 "error": str(exc),
                 "username": username,
@@ -69,17 +69,29 @@ async def login_post(
             status_code=401,
         )
 
-    secrets.save_secret(HOSTKEY_SECRET_NAME, host_key)
+    store = get_account_store()
+    account = store.get_or_create(username)
+    account.save_host_key(host_key)
+    logger.info(
+        "Login successful: account_id=%s username=%s",
+        account.id,
+        account.username,
+    )
+
     response = RedirectResponse("/", status_code=303)
-    write_session(response)
+    write_session(response, account.id)
     return response
 
 
 @router.post("/logout", response_model=None)
 async def logout_post() -> RedirectResponse:
-    """Удаляет hostKey и cookie, редиректит на /login."""
+    """Удаляет cookie, редиректит на /login.
 
-    secrets.delete_secret(HOSTKEY_SECRET_NAME)
+    hostKey и файлы коллекции не удаляются — пользователь может снова
+    залогиниться в этот же аккаунт. Полное удаление аккаунта —
+    отдельный сценарий (TODO: при необходимости добавить ``/account/delete``).
+    """
+
     response = RedirectResponse("/login", status_code=303)
     clear_session(response)
     return response

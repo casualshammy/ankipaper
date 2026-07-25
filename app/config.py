@@ -24,16 +24,6 @@ class Settings(BaseSettings):
         description="Публичный URL приложения, используется для абсолютных ссылок.",
     )
 
-    data_dir: Path = Field(
-        default=Path("/data"),
-        description="Каталог для постоянных данных (БД, hostKey, медиа).",
-    )
-
-    session_secret_file: Path = Field(
-        default=Path("/data/session.secret"),
-        description="Файл с секретом для подписи cookie-сессий.",
-    )
-
     cookie_max_age_days: int = Field(
         default=30,
         ge=1,
@@ -44,12 +34,6 @@ class Settings(BaseSettings):
         default=False,
         description="True, если приложение работает за reverse proxy (nginx).",
     )
-
-    ankiweb_endpoint: str | None = Field(
-        default=None,
-        description="Endpoint AnkiWeb для sync-протокола (по умолчанию sync.ankiweb.net).",
-    )
-
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

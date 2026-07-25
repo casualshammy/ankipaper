@@ -3,6 +3,10 @@
 Коллекция открывается лениво при первом обращении. Все операции
 выполняются в thread-pool через ``asyncio.to_thread``, чтобы не
 блокировать event loop FastAPI.
+
+С версией с поддержкой нескольких аккаунтов (``app/storage/account.py``)
+менеджер создаётся per-account: каждый инстанс привязан к конкретному
+пути ``<account_dir>/collection.anki21``.
 """
 
 from __future__ import annotations
@@ -10,41 +14,51 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Awaitable, Callable, TypeVar
+from typing import Any, Callable, TypeVar
 
 import anki.collection
-
-from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-_COLLECTION_FILENAME = "collection.anki21"
+MEDIA_DIR_NAME = "collection.media"
 
 
 class CollectionManager:
-    """Singleton-менеджер локальной коллекции Anki."""
+    """Менеджер локальной коллекции Anki для одного аккаунта."""
 
-    def __init__(self) -> None:
+    def __init__(self, collection_path: Path) -> None:
+        """Создаёт менеджер для коллекции по указанному пути.
+
+        Args:
+            collection_path: путь к ``collection.anki21`` (не к каталогу).
+        """
+
         self._lock = asyncio.Lock()
         self._collection: anki.collection.Collection | None = None
+        self._path = collection_path
 
     @property
     def collection_path(self) -> Path:
         """Путь к файлу коллекции."""
 
-        return get_settings().data_dir / _COLLECTION_FILENAME
+        return self._path
 
     def has_collection(self) -> bool:
         """True, если файл коллекции существует на диске."""
 
-        return self.collection_path.exists()
+        return self._path.exists()
 
     def is_open(self) -> bool:
         """True, если коллекция сейчас открыта в памяти."""
 
         return self._collection is not None
+
+    def media_dir(self) -> Path:
+        """Путь к директории медиа (сиблинг ``collection.media``)."""
+
+        return self._path.with_name(MEDIA_DIR_NAME)
 
     async def run(
         self,
@@ -85,20 +99,8 @@ class CollectionManager:
         if self._collection is not None:
             return
 
-        path = self.collection_path
+        path = self._path
         path.parent.mkdir(parents=True, exist_ok=True)
 
         logger.info("Opening collection at %s", path)
         self._collection = anki.collection.Collection(str(path))
-
-
-_manager: CollectionManager | None = None
-
-
-def get_collection_manager() -> CollectionManager:
-    """Возвращает singleton-инстанс CollectionManager."""
-
-    global _manager
-    if _manager is None:
-        _manager = CollectionManager()
-    return _manager

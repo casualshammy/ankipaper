@@ -17,38 +17,30 @@ from app.domain.scheduler import (
     get_deck_due_breakdown,
     get_next_card,
 )
-from app.storage import get_collection_manager, secrets
+from app.storage.account import Account
 from app.sync.client import try_sync
-from app.web.deps import get_session
-from app.web.session import Session
+from app.web.deps import get_current_account_optional
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-HOSTKEY_SECRET_NAME = "ankiweb_hostkey"
-
-
-def _host_key() -> str | None:
-    """Возвращает сохранённый hostKey или None."""
-
-    return secrets.load_secret(HOSTKEY_SECRET_NAME)
-
 
 async def _session_done(
     request: Request,
-    manager,
+    account: Account,
     deck_id: int,
 ) -> HTMLResponse:
     """Отображает страницу завершения сессии с авто-sync."""
 
-    synced, sync_err, attempted = await _auto_sync_if_possible(manager, _host_key())
+    synced, sync_err, attempted = await _auto_sync_if_possible(account)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "study_done.html",
         {
             "version": __version__,
+            "account": account,
             "deck_id": deck_id,
             "remaining": 0,
             "remaining_new": 0,
@@ -61,16 +53,14 @@ async def _session_done(
     )
 
 
-async def _auto_sync_if_possible(
-    manager,
-    host_key: str | None,
-) -> tuple[bool, str | None, bool]:
+async def _auto_sync_if_possible(account: Account) -> tuple[bool, str | None, bool]:
     """Best-effort sync после завершения сессии ревью."""
 
+    host_key = account.host_key()
     if not host_key:
         return False, None, False
 
-    result = await manager.run(try_sync, host_key)
+    result = await account.manager.run(try_sync, host_key)
     return (result.required, result.error, True)
 
 
@@ -78,19 +68,19 @@ async def _auto_sync_if_possible(
 async def study_get(
     request: Request,
     deck_id: int,
-    session: Session = Depends(get_session),
+    account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
     """Показывает front следующей due-карточки или страницу завершения."""
 
-    if not session.is_authenticated:
+    if account is None:
         return RedirectResponse("/login", status_code=303)
 
     templates: Jinja2Templates = request.app.state.templates
-    manager = get_collection_manager()
+    manager = account.manager
 
     view = await manager.run(get_next_card, deck_id)
     if view is None:
-        return await _session_done(request, manager, deck_id)
+        return await _session_done(request, account, deck_id)
 
     breakdown = await manager.run(get_deck_due_breakdown, deck_id)
     return templates.TemplateResponse(
@@ -98,6 +88,7 @@ async def study_get(
         "study_front.html",
         {
             "version": __version__,
+            "account": account,
             "deck_id": deck_id,
             "card": view,
             "remaining": breakdown.total,
@@ -120,15 +111,15 @@ async def study_post(
     hard_interval: str = Form(""),
     good_interval: str = Form(""),
     easy_interval: str = Form(""),
-    session: Session = Depends(get_session),
+    account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
     """Обрабатывает Reveal / Answer в рамках сессии ревью."""
 
-    if not session.is_authenticated:
+    if account is None:
         return RedirectResponse("/login", status_code=303)
 
     templates: Jinja2Templates = request.app.state.templates
-    manager = get_collection_manager()
+    manager = account.manager
 
     if not card_id:
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
@@ -139,12 +130,6 @@ async def study_post(
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
     if reveal:
-        # ``card_type`` и ``*_interval`` приходят с фронта через скрытые
-        # поля формы, чтобы подсветить тег типа и показать предпросмотр
-        # интервалов на обратной стороне. Фоллбэк на ``"new"`` / ``"—"`` —
-        # на случай, если форма отправлена без полей.
-        from app.domain.scheduler import CardIntervals
-
         intervals = CardIntervals(
             again=again_interval or "—",
             hard=hard_interval or "—",
@@ -163,6 +148,7 @@ async def study_post(
             "study_back.html",
             {
                 "version": __version__,
+                "account": account,
                 "deck_id": deck_id,
                 "card": view,
                 "remaining": breakdown.total,
@@ -180,7 +166,7 @@ async def study_post(
 
         outcome = await manager.run(answer_card, card_id_int, rating, deck_id=deck_id)
         if outcome.next_card_id is None:
-            return await _session_done(request, manager, deck_id)
+            return await _session_done(request, account, deck_id)
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
     return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)

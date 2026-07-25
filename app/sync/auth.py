@@ -17,14 +17,6 @@ DEFAULT_ENDPOINT = "https://sync.ankiweb.net/"
 class AuthError(RuntimeError):
     """Ошибка авторизации в AnkiWeb (неверные креды, сеть и т.п.)."""
 
-
-def _endpoint() -> str:
-    """Возвращает sync-endpoint (настраивается через переменные окружения)."""
-
-    value = get_settings().ankiweb_endpoint
-    return value if value else DEFAULT_ENDPOINT
-
-
 def _open_temp_collection() -> tuple[anki.collection.Collection, str]:
     """Открывает временную коллекцию для sync_login.
 
@@ -56,7 +48,7 @@ def login(username: str, password: str) -> str:
 
     col, tmp_path = _open_temp_collection()
     try:
-        auth: SyncAuth = col.sync_login(username, password, _endpoint())
+        auth: SyncAuth = col.sync_login(username, password, DEFAULT_ENDPOINT)
     except BackendError as exc:
         raise AuthError(_translate_backend_error(exc)) from exc
     except Exception as exc:
@@ -86,7 +78,7 @@ def make_auth(host_key: str, endpoint: str | None = None) -> SyncAuth:
             Если ``None`` — используется ``_endpoint()`` из настроек.
     """
 
-    return SyncAuth(hkey=host_key, endpoint=endpoint or _endpoint())
+    return SyncAuth(hkey=host_key, endpoint=endpoint or DEFAULT_ENDPOINT)
 
 
 def _translate_backend_error(exc: BackendError) -> str:

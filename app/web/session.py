@@ -4,12 +4,17 @@
 момента ``_serializer()`` возвращает None, а ``read_session()`` —
 «не аутентифицирован». Это намеренно: после login файл появляется, и
 последующие запросы читают сессии корректно.
+
+С версией с поддержкой нескольких аккаунтов cookie хранит
+``{"user": "<account_id>"}`` — это id, по которому :class:`AccountStore`
+находит нужный аккаунт в памяти (или подгружает с диска).
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import Request, Response
 from itsdangerous import BadSignature, URLSafeSerializer
@@ -24,9 +29,10 @@ COOKIE_KEY = "user"
 
 @dataclass(slots=True)
 class Session:
-    """Минимальная сессия: сейчас нужен только факт аутентификации."""
+    """Минимальная сессия: факт аутентификации + текущий аккаунт."""
 
     is_authenticated: bool
+    account_id: str | None = None
 
 
 def _serializer() -> URLSafeSerializer | None:
@@ -69,18 +75,26 @@ def read_session(request: Request) -> Session:
         return Session(is_authenticated=False)
 
     try:
-        data = s.loads(raw)
+        data: Any = s.loads(raw)
     except BadSignature:
         return Session(is_authenticated=False)
 
-    return Session(is_authenticated=bool(data.get(COOKIE_KEY)))
+    if not isinstance(data, dict):
+        return Session(is_authenticated=False)
+
+    user = data.get(COOKIE_KEY)
+    if not isinstance(user, str) or not user:
+        return Session(is_authenticated=False)
+
+    return Session(is_authenticated=True, account_id=user)
 
 
-def write_session(response: Response) -> None:
-    """Ставит cookie аутентифицированной сессии.
+def write_session(response: Response, account_id: str) -> None:
+    """Ставит cookie аутентифицированной сессии для указанного аккаунта.
 
     Args:
         response: объект Response, в который ставится cookie.
+        account_id: идентификатор аккаунта (``Account.id``).
     """
 
     s = _serializer()
@@ -89,7 +103,7 @@ def write_session(response: Response) -> None:
 
         s = URLSafeSerializer(_load_or_create_fernet_key(), salt="kindlanki-cookie")
 
-    token = s.dumps({COOKIE_KEY: True})
+    token = s.dumps({COOKIE_KEY: account_id})
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,

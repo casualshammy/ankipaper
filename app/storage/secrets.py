@@ -22,7 +22,7 @@ DEFAULT_PERMISSIONS = 0o600
 def _fernet_key_path() -> Path:
     """Возвращает путь к файлу с Fernet-ключом."""
 
-    return get_settings().session_secret_file
+    return Path("/data/session.secret")
 
 
 def _ensure_data_dir() -> None:
@@ -70,60 +70,115 @@ def _fernet() -> Fernet | None:
         return None
 
 
-def save_secret(name: str, value: str) -> None:
-    """Шифрует ``value`` и сохраняет в ``<data_dir>/<name>`` (mode 0600).
+def _save_secret_at(path: Path, value: str, *, name_for_log: str) -> None:
+    """Шифрует ``value`` и сохраняет в ``path`` (mode 0600).
 
     Args:
-        name: имя файла (например, "hostkey.enc").
+        path: полный путь к файлу секрета.
         value: открытый текст для шифрования.
+        name_for_log: человекочитаемое имя для логов (например, ``hostkey.enc``).
     """
 
-    settings = get_settings()
     f = _fernet() or Fernet(_load_or_create_fernet_key())
     encrypted = f.encrypt(value.encode("utf-8"))
 
-    path = settings.data_dir / name
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, DEFAULT_PERMISSIONS)
     try:
         os.write(fd, encrypted)
     finally:
         os.close(fd)
-    logger.info("Saved secret %s", name)
+    logger.info("Saved secret %s", name_for_log)
 
 
-def load_secret(name: str) -> str | None:
-    """Расшифровывает и возвращает секрет, или None при отсутствии/ошибке.
+def _load_secret_at(path: Path, *, name_for_log: str) -> str | None:
+    """Расшифровывает и возвращает секрет по указанному пути, или None."""
 
-    Args:
-        name: имя файла секрета (например, "hostkey.enc").
-    """
-
-    settings = get_settings()
-    path = settings.data_dir / name
     if not path.exists():
         return None
 
     f = _fernet()
     if f is None:
-        logger.warning("Cannot decrypt %s: session secret not available", name)
+        logger.warning("Cannot decrypt %s: session secret not available", name_for_log)
         return None
 
     try:
         return f.decrypt(path.read_bytes()).decode("utf-8")
     except (InvalidToken, OSError) as exc:
-        logger.warning("Failed to decrypt %s: %s", name, exc)
+        logger.warning("Failed to decrypt %s: %s", name_for_log, exc)
         return None
 
 
-def delete_secret(name: str) -> None:
-    """Удаляет файл секрета, если он существует. Ошибки игнорируются."""
+def _delete_secret_at(path: Path) -> None:
+    """Удаляет файл секрета по указанному пути. Ошибки игнорируются."""
 
-    settings = get_settings()
-    path = settings.data_dir / name
     try:
         path.unlink()
     except FileNotFoundError:
         pass
     except OSError as exc:
-        logger.warning("Failed to delete %s: %s", name, exc)
+        logger.warning("Failed to delete %s: %s", path, exc)
+
+
+def save_secret(name: str, value: str) -> None:
+    """Шифрует ``value`` и сохраняет в ``<data_dir>/<name>`` (mode 0600).
+
+    Используется для глобальных секретов уровня инстанса
+    (на данный момент — не используется; оставлено для обратной
+    совместимости и будущих глобальных секретов).
+
+    Args:
+        name: имя файла (например, "hostkey.enc").
+        value: открытый текст для шифрования.
+    """
+
+    path = Path("/data") / name
+    _save_secret_at(path, value, name_for_log=name)
+
+
+def load_secret(name: str) -> str | None:
+    """Расшифровывает и возвращает секрет из ``<data_dir>/<name>``, или None.
+
+    Args:
+        name: имя файла секрета (например, "hostkey.enc").
+    """
+
+    return _load_secret_at(Path("/data") / name, name_for_log=name)
+
+
+def delete_secret(name: str) -> None:
+    """Удаляет файл секрета, если он существует. Ошибки игнорируются."""
+
+    _delete_secret_at(Path("/data") / name)
+
+
+def save_secret_in(account_dir: Path, name: str, value: str) -> None:
+    """Шифрует ``value`` и сохраняет в ``<account_dir>/<name>`` (mode 0600).
+
+    Args:
+        account_dir: каталог аккаунта (``data/accounts/<id>``).
+        name: имя файла (например, ``"hostkey.enc"``).
+        value: открытый текст для шифрования.
+    """
+
+    _save_secret_at(account_dir / name, value, name_for_log=f"{account_dir.name}/{name}")
+
+
+def load_secret_in(account_dir: Path, name: str) -> str | None:
+    """Расшифровывает секрет из ``<account_dir>/<name>``, или None.
+
+    Args:
+        account_dir: каталог аккаунта (``data/accounts/<id>``).
+        name: имя файла секрета.
+    """
+
+    return _load_secret_at(
+        account_dir / name,
+        name_for_log=f"{account_dir.name}/{name}",
+    )
+
+
+def delete_secret_in(account_dir: Path, name: str) -> None:
+    """Удаляет секрет в указанном каталоге аккаунта. Ошибки игнорируются."""
+
+    _delete_secret_at(account_dir / name)
