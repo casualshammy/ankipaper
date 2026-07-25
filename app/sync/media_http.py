@@ -219,6 +219,48 @@ def _is_supported(fname: str) -> bool:
     return suffix in SUPPORTED_EXTENSIONS
 
 
+def _safe_media_path(real_name: str, target_dir: Path) -> Path | None:
+    """Resolves ``real_name`` within ``target_dir`` without escape.
+
+    Returns the absolute destination path if it is a regular file inside
+    ``target_dir``. Returns ``None`` if the name is absolute, contains
+    traversal components (``..``) or NUL bytes, points through a
+    symlink, or otherwise escapes ``target_dir`` after resolution.
+
+    Anki media names are arbitrary Unicode but never contain path
+    separators or traversal segments in normal use — we reject anything
+    that does.
+    """
+
+    if not real_name or "\x00" in real_name:
+        return None
+    normalised = real_name.replace("\\", "/")
+    # Reject absolute paths (Unix ``/foo`` and Windows ``C:foo`` / ``\\host\share``).
+    if normalised.startswith("/") or normalised.startswith("\\"):
+        return None
+    if len(normalised) >= 2 and normalised[1] == ":":
+        return None
+    parts = [p for p in normalised.split("/") if p not in ("", ".")]
+    if not parts or any(p == ".." for p in parts):
+        return None
+    target_dir_resolved = target_dir.resolve()
+    target = target_dir.joinpath(*parts).resolve()
+    try:
+        target.relative_to(target_dir_resolved)
+    except ValueError:
+        return None
+    # Defence in depth: refuse to traverse any existing symlink in the
+    # path under ``target_dir``. ``zf.open()`` never produces symlinks,
+    # but a previously extracted media file could be one pointing
+    # outside the media directory.
+    cur = target.parent
+    while cur != cur.parent and cur.is_relative_to(target_dir_resolved):
+        if cur.is_symlink():
+            return None
+        cur = cur.parent
+    return target
+
+
 def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
     """Extracts a media zip into ``target_dir``.
 
@@ -248,11 +290,14 @@ def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
             if info.filename == "_meta" or info.is_dir():
                 continue
             real_name = meta.get(info.filename, info.filename)
-            # Sanitize: do not let ``..`` escape target_dir.
-            if ".." in Path(real_name).parts:
-                logger.warning("Skipping suspicious media filename: %s", real_name)
+            target = _safe_media_path(real_name, target_dir)
+            if target is None:
+                logger.warning(
+                    "Skipping media entry with unsafe filename: %r (zip name: %s)",
+                    real_name,
+                    info.filename,
+                )
                 continue
-            target = target_dir / real_name
             target.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(info) as src, target.open("wb") as dst:
                 dst.write(src.read())
