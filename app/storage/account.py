@@ -37,6 +37,11 @@ _LAST_USN_FILE = "media.last_usn"
 def sanitize_account_id(username: str) -> str:
     """Returns a safe account directory name from an AnkiWeb username.
 
+    The username is lowercased so that ``Alice`` and ``alice`` map to the
+    same account — AnkiWeb treats usernames case-insensitively, and a
+    case-different login would otherwise create a duplicate account and
+    silently overwrite the hostKey.
+
     Raises:
         ValueError: if the username is empty, reserved, or contains
             invalid characters (``/``, ``\\``, NUL).
@@ -46,7 +51,7 @@ def sanitize_account_id(username: str) -> str:
         raise ValueError("Empty username")
     if username != username.strip():
         raise ValueError("Username has leading or trailing whitespace")
-    cleaned = username
+    cleaned = username.lower()
     if not cleaned:
         raise ValueError("Empty username")
     if cleaned in (".", ".."):
