@@ -103,6 +103,9 @@ class CardView:
     flag: int = 0
     """User flag 0..4 (0 = none, 1 = red, 2 = orange, 3 = green, 4 = blue)."""
 
+    is_marked: bool = False
+    """True if the card's note carries Anki's ``marked`` tag (the "star")."""
+
     @property
     def css_class(self) -> str:
         """CSS class for the current card type (for highlighting in the template)."""
@@ -261,6 +264,39 @@ def set_card_flag(
         raise ValueError(f"card not found: {card_id}") from e
     result = col.set_user_flag_for_cards(flag, [card_id])
     return int(result.count)
+
+
+def set_card_marked(
+    col: anki.collection.Collection,
+    card_id: int,
+    marked: bool,
+) -> bool:
+    """Toggles Anki's ``marked`` (star) tag on the card's note.
+
+    Args:
+        col: open collection.
+        card_id: target card id.
+        marked: ``True`` to add the ``marked`` tag, ``False`` to remove it.
+
+    Returns:
+        The resulting marked state of the card.
+
+    Raises:
+        ValueError: if the card does not exist.
+    """
+
+    try:
+        card = col.get_card(card_id)
+    except anki.errors.NotFoundError as e:
+        raise ValueError(f"card not found: {card_id}") from e
+    note = card.note()
+    if marked and not note.has_tag("marked"):
+        note.add_tag("marked")
+        note.flush()
+    elif not marked and note.has_tag("marked"):
+        note.remove_tag("marked")
+        note.flush()
+    return bool(note.has_tag("marked"))
 
 
 def get_next_card(
@@ -477,6 +513,7 @@ def _load_card_view(
         card_type=card_type,
         intervals=intervals,
         flag=int(card.user_flag()),
+        is_marked=bool(card.note().has_tag("marked")),
     )
 
 

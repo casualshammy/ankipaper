@@ -17,6 +17,7 @@ from app.domain.scheduler import (
     get_deck_due_breakdown,
     get_next_card,
     set_card_flag,
+    set_card_marked,
 )
 from app.storage.account import Account
 from app.sync.client import try_sync
@@ -199,6 +200,42 @@ async def flag_post(
                 "flag_post: invalid flag card_id=%s flag=%s deck_id=%s",
                 card_id,
                 flag,
+                deck_id,
+            )
+
+    return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+
+
+@router.post("/deck/{deck_id}/mark", response_model=None)
+async def mark_post(
+    deck_id: int,
+    card_id: str = Form(""),
+    marked: str = Form(""),
+    account: Account | None = Depends(get_current_account_optional),
+) -> RedirectResponse:
+    """Toggles the "marked" (star) state on a card and returns to the study page.
+
+    The hidden ``marked`` field carries the desired state (``"0"`` / ``"1"``)
+    so the template can pre-compute the toggle target without any JS.
+    """
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+
+    if card_id and marked:
+        try:
+            card_id_int = int(card_id)
+            marked_bool = marked == "1"
+        except ValueError:
+            return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+
+        try:
+            await account.manager.run(set_card_marked, card_id_int, marked_bool)
+        except ValueError:
+            logger.warning(
+                "mark_post: invalid mark card_id=%s marked=%s deck_id=%s",
+                card_id,
+                marked,
                 deck_id,
             )
 
