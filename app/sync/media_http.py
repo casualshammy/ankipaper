@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import string
 import urllib.error
@@ -206,6 +207,25 @@ def _media_dir(data_dir: Path) -> Path:
     return data_dir / "collection.media"
 
 
+def _media_dir_size(media_dir: Path) -> int:
+    """Returns the total size in bytes of all regular files under ``media_dir``.
+
+    Missing directories count as 0. Symlinks are not followed.
+    """
+
+    if not media_dir.exists():
+        return 0
+    total = 0
+    for root, _dirs, files in os.walk(media_dir):
+        for name in files:
+            try:
+                total += (Path(root) / name).stat().st_size
+            except OSError:
+                # File removed between walk and stat — ignore.
+                continue
+    return total
+
+
 def _is_supported(fname: str) -> bool:
     """True if ``fname`` has an extension we want to download.
 
@@ -261,7 +281,13 @@ def _safe_media_path(real_name: str, target_dir: Path) -> Path | None:
     return target
 
 
-def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
+def _extract_zip(
+    zip_bytes: bytes,
+    target_dir: Path,
+    *,
+    max_file_bytes: int | None,
+    remaining_budget: int | None,
+) -> tuple[list[str], int, int, bool]:
     """Extracts a media zip into ``target_dir``.
 
     Zip format (see ``_anki_repo/rslib/src/sync/media/zip.rs:29-48``):
@@ -272,13 +298,23 @@ def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
     Args:
         zip_bytes: zip contents from the server.
         target_dir: where to extract (e.g. ``/data/collection.media``).
+        max_file_bytes: if not None, individual files larger than this are
+            skipped with a warning and counted in ``oversize_count``.
+        remaining_budget: if not None, the remaining bytes available in
+            the user's collection before hitting the collection-size
+            limit. Files that would exceed it are not written; once the
+            budget is exhausted, ``hit_collection_limit`` is set.
 
     Returns:
-        List of extracted file names.
+        Tuple ``(extracted_names, bytes_written, oversize_count,
+        hit_collection_limit)``.
     """
 
     target_dir.mkdir(parents=True, exist_ok=True)
     extracted: list[str] = []
+    bytes_written = 0
+    oversize_count = 0
+    hit_collection_limit = False
 
     with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
         meta: dict[str, str] = {}
@@ -290,6 +326,25 @@ def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
             if info.filename == "_meta" or info.is_dir():
                 continue
             real_name = meta.get(info.filename, info.filename)
+            if max_file_bytes is not None and info.file_size > max_file_bytes:
+                logger.warning(
+                    "Skipping oversize media file: %r size=%d > %d",
+                    real_name,
+                    info.file_size,
+                    max_file_bytes,
+                )
+                oversize_count += 1
+                continue
+            if remaining_budget is not None and info.file_size > remaining_budget:
+                logger.warning(
+                    "Media collection size limit reached; skipping %r "
+                    "(file=%d, remaining budget=%d)",
+                    real_name,
+                    info.file_size,
+                    remaining_budget,
+                )
+                hit_collection_limit = True
+                continue
             target = _safe_media_path(real_name, target_dir)
             if target is None:
                 logger.warning(
@@ -302,8 +357,11 @@ def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
             with zf.open(info) as src, target.open("wb") as dst:
                 dst.write(src.read())
             extracted.append(real_name)
+            bytes_written += info.file_size
+            if remaining_budget is not None:
+                remaining_budget -= info.file_size
 
-    return extracted
+    return extracted, bytes_written, oversize_count, hit_collection_limit
 
 
 def sync_media_direct(
@@ -315,6 +373,8 @@ def sync_media_direct(
     batch_limit: int = 25,
     image_only: bool = True,
     progress_callback=None,
+    max_file_bytes: int | None = None,
+    max_collection_bytes: int | None = None,
 ) -> dict:
     """Downloads media files from AnkiWeb and saves them to ``data_dir/collection.media``.
 
@@ -336,10 +396,18 @@ def sync_media_direct(
             ``"downloadFiles"``; ``current``/``total`` is the progress in
             the current phase; ``downloaded`` is how many files have
             already been downloaded. Used for the progress bar in the UI.
+        max_file_bytes: if not None, individual files larger than this
+            are skipped (with a warning) and not written to disk.
+        max_collection_bytes: if not None, the total on-disk size of
+            ``collection.media/`` is bounded by this value. When the
+            existing directory is already at or above the limit, no new
+            files are written and ``collection_too_large`` in the
+            returned dict is set to True.
 
     Returns:
         Dict with the result: ``{"downloaded": N, "total": N,
-        "skipped": N, "last_usn": N, "endpoint": "..."}``.
+        "skipped": N, "skipped_oversize": N, "last_usn": N,
+        "endpoint": "...", "collection_too_large": bool}``.
     """
 
     base = _endpoint(endpoint)
@@ -435,10 +503,32 @@ def sync_media_direct(
     #    zip with the extracted files.
     downloaded: list[str] = []
     total_files = len(all_files)
+
+    # Compute the existing on-disk size once so we can enforce the
+    # collection-wide budget without re-scanning the directory per file.
+    base_size = _media_dir_size(media_dir) if max_collection_bytes is not None else 0
+    bytes_written = 0
+    skipped_oversize = 0
+    collection_too_large = (
+        max_collection_bytes is not None and base_size >= max_collection_bytes
+    )
+    if collection_too_large:
+        logger.warning(
+            "Media collection size limit reached before download: "
+            "current=%d limit=%d — new files will not be written",
+            base_size,
+            max_collection_bytes,
+        )
+
     for i in range(0, total_files, batch_limit):
         batch = [f for f, _ in all_files[i : i + batch_limit]]
         if not batch:
             continue
+        # If the collection is already at the limit, skip the rest of
+        # the batches entirely — there is no point downloading zips we
+        # will not extract.
+        if collection_too_large:
+            break
         logger.info(
             "Downloading media batch %d-%d/%d (sample: %r)",
             i,
@@ -461,7 +551,29 @@ def sync_media_direct(
             zip_bytes = _decompress(raw)
         else:
             zip_bytes = raw
-        downloaded.extend(_extract_zip(zip_bytes, media_dir))
+        remaining_budget = (
+            max_collection_bytes - base_size - bytes_written
+            if max_collection_bytes is not None
+            else None
+        )
+        extracted, written_now, oversize_now, hit_limit = _extract_zip(
+            zip_bytes,
+            media_dir,
+            max_file_bytes=max_file_bytes,
+            remaining_budget=remaining_budget,
+        )
+        downloaded.extend(extracted)
+        bytes_written += written_now
+        skipped_oversize += oversize_now
+        if hit_limit:
+            collection_too_large = True
+            logger.warning(
+                "Media collection size limit reached during extraction: "
+                "base=%d written=%d limit=%d",
+                base_size,
+                bytes_written,
+                max_collection_bytes,
+            )
 
         if progress_callback is not None:
             try:
@@ -474,14 +586,23 @@ def sync_media_direct(
             except Exception:  # noqa: BLE001
                 logger.exception("progress_callback raised during downloadFiles")
 
-    # Save last_usn for the next incremental sync.
+    # Save last_usn for the next incremental sync. We persist it even
+    # when the collection hit the size limit — the server-side state has
+    # already advanced past these files, and we don't want to redownload
+    # them on every sync. The user can free space and resync; the UI
+    # banner will disappear once a sync completes without hitting the
+    # limit.
     last_usn_path.parent.mkdir(parents=True, exist_ok=True)
     last_usn_path.write_text(str(server_usn))
 
     logger.info(
-        "Media sync complete: %d files downloaded, %d unsupported skipped, last_usn=%s",
+        "Media sync complete: %d files downloaded, %d unsupported skipped, "
+        "%d oversize skipped, %d bytes written, collection_too_large=%s, last_usn=%s",
         len(downloaded),
         skipped_unsupported,
+        skipped_oversize,
+        bytes_written,
+        collection_too_large,
         server_usn,
     )
 
@@ -489,6 +610,9 @@ def sync_media_direct(
         "downloaded": len(downloaded),
         "total": len(all_files),
         "skipped": skipped_unsupported,
+        "skipped_oversize": skipped_oversize,
+        "bytes_written": bytes_written,
+        "collection_too_large": collection_too_large,
         "last_usn": server_usn,
         "endpoint": base,
     }

@@ -73,6 +73,25 @@ p {
 .notice { font-weight: bold; }
 .error { font-weight: bold; }
 
+/* Boxed notice used for persistent warnings on the home page
+   (e.g. media collection over the per-user size limit). */
+.notice-block {
+  border: 2px solid #000000;
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+.notice-block p {
+  margin: 8px 0;
+}
+.notice-block code {
+  font-family: monospace;
+  font-size: 16px;
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid #000000;
+  padding: 1px 4px;
+}
+
 /* Footer --------------------------------------------------------------- */
 .footer {
   padding: 12px 16px;

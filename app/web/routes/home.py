@@ -63,6 +63,8 @@ async def home(
             "sync_error": sync_error,
             "rebuild_ok": rebuild_ok,
             "rebuild_error": rebuild_error,
+            "media_collection_too_large": account.sync_state.media_collection_too_large,
+            "media_max_collection_bytes": settings.media_max_collection_bytes,
         },
     )
 

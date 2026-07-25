@@ -41,6 +41,12 @@ class SyncState:
     # "upload" | "download" | "" — set once the user picks a direction.
     conflict_direction: str = ""
 
+    # Set to True after a media-sync that hit the user's per-collection
+    # size limit. Surfaced on the home page so the user knows why their
+    # media stopped downloading. Cleared automatically when a subsequent
+    # sync finishes without hitting the limit.
+    media_collection_too_large: bool = False
+
     def to_dict(self) -> dict[str, Any]:
         """Returns a dict ready for JSON serialisation."""
 

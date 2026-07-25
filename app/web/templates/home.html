@@ -5,6 +5,24 @@
 {% block content %}
   <h1>Decks</h1>
 
+  {% if media_collection_too_large %}
+    <section class="notice notice-block">
+      <p>
+        <strong>Media library too large.</strong>
+        Your saved card media on this device exceeds the configured limit
+        ({{ (media_max_collection_bytes / 1024 / 1024)|round(1) }} MB).
+        New media files are not being downloaded during sync.
+      </p>
+      <p>
+        To restore media sync, free up space in your Anki collection
+        (delete unused images/fonts via the Anki desktop client or
+        raise <code>KINDLANKI_MEDIA_MAX_COLLECTION_BYTES</code> on the
+        server) and then press <strong>Sync</strong> again. The banner
+        will disappear once a sync completes without hitting the limit.
+      </p>
+    </section>
+  {% endif %}
+
   {% if sync_ok %}
     <p class="notice">Synced successfully.</p>
   {% endif %}

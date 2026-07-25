@@ -25,6 +25,7 @@ from app.sync.media_http import sync_media_direct
 from app.sync.state import SyncState
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
+from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ async def _run_media_sync_background(
     endpoint: str | None,
     data_dir: Path,
     last_usn_path: Path,
+    settings: Settings,
 ) -> None:
     """Runs the media sync in the background, updating the account's SyncState."""
 
@@ -112,20 +114,26 @@ async def _run_media_sync_background(
         state.downloaded = downloaded
 
     try:
-        await asyncio.to_thread(
+        result = await asyncio.to_thread(
             sync_media_direct,
             host_key=host_key,
             endpoint=endpoint,
             data_dir=data_dir,
             last_usn_path=last_usn_path,
             progress_callback=_cb,
+            max_file_bytes=settings.media_max_file_bytes,
+            max_collection_bytes=settings.media_max_collection_bytes,
         )
+        # Persist the per-collection size-limit state for the UI banner.
+        # A successful sync that did not hit the limit clears the flag.
+        state.media_collection_too_large = bool(result.get("collection_too_large"))
         state.status = "done"
         state.phase = "done"
         state.finished_at = time.time()
         state.current = state.total = 100
         logger.info(
-            "Media sync completed in %.1fs", state.finished_at - state.started_at
+            "Media sync completed in %.1fs",
+            state.finished_at - state.started_at,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Background media sync failed")
@@ -138,6 +146,7 @@ def _start_media_sync_after_full(
     account: Account,
     host_key: str,
     endpoint: str | None,
+    settings: Settings,
 ) -> None:
     """Schedules a background media sync after a successful full upload/download."""
 
@@ -148,6 +157,7 @@ def _start_media_sync_after_full(
             endpoint=endpoint,
             data_dir=account.data_dir,
             last_usn_path=account.last_usn_path(),
+            settings=settings,
         )
     )
 
@@ -159,6 +169,7 @@ def _start_media_sync_after_full(
 
 @router.post("/sync", response_model=None)
 async def sync_post(
+    request: Request,
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
 ) -> RedirectResponse:
@@ -166,6 +177,7 @@ async def sync_post(
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
+    settings: Settings = request.app.state.settings
 
     host_key = account.host_key()
     if not host_key:
@@ -232,6 +244,7 @@ async def sync_post(
         account,
         host_key,
         result.new_endpoint,
+        settings,
     )
 
     # Return to the home page; the indicator will show progress.
@@ -332,6 +345,7 @@ async def sync_full_confirm_get(
 
 @router.post("/sync/full", response_model=None)
 async def sync_full_post(
+    request: Request,
     direction: str = Form(...),
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
@@ -340,6 +354,7 @@ async def sync_full_post(
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
+    settings: Settings = request.app.state.settings
     state = account.sync_state
     if not state.conflict_pending or direction != state.conflict_direction or direction not in ("upload", "download"):
         return RedirectResponse("/", status_code=303)
@@ -375,5 +390,5 @@ async def sync_full_post(
     if result.error:
         return RedirectResponse(f"/?sync_error={result.error}", status_code=303)
 
-    _start_media_sync_after_full(account, host_key, endpoint)
+    _start_media_sync_after_full(account, host_key, endpoint, settings)
     return RedirectResponse("/", status_code=303)

@@ -61,6 +61,25 @@ class Settings(BaseSettings):
         description="Rolling window for the per-username login rate limit.",
     )
 
+    media_max_file_bytes: int = Field(
+        default=1 * 1024 * 1024,
+        ge=1,
+        description=(
+            "Maximum size of a single media file in bytes. Files larger "
+            "than this are skipped during media-sync (with a warning)."
+        ),
+    )
+    media_max_collection_bytes: int = Field(
+        default=200 * 1024 * 1024,
+        ge=1,
+        description=(
+            "Maximum total size of the user's collection.media/ directory "
+            "in bytes. When the existing directory already exceeds this "
+            "limit, no new media files are written to disk during sync."
+        ),
+    )
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Returns the singleton Settings instance for the application."""
