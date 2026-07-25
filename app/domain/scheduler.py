@@ -65,6 +65,16 @@ class DueBreakdown:
 
 
 @dataclass(slots=True)
+class CardIntervals:
+    """Предпросмотр интервалов для кнопок рейтинга."""
+
+    again: str
+    hard: str
+    good: str
+    easy: str
+
+
+@dataclass(slots=True)
 class CardView:
     """Подготовленное для ревью представление карточки."""
 
@@ -76,6 +86,8 @@ class CardView:
     fields: list[tuple[str, str]]
     card_type: str = "new"
     """Тип карточки: ``new``, ``learning``, ``review`` или ``relearning``."""
+    intervals: CardIntervals | None = None
+    """Предпросмотр интервалов для кнопок Again/Hard/Good/Easy (или ``None``)."""
 
     @property
     def css_class(self) -> str:
@@ -202,25 +214,32 @@ def get_next_card(
     card_id = int(queued.cards[0].card.id)
     card_state = queued.cards[0].states.current
     card_type = _card_type_from_state(card_state)
+    intervals = _compute_intervals(queued.cards[0])
     logger.info(
         "get_next_card: deck_id=%s next card_id=%s type=%s "
-        "state(normal=%s filtered=%s) remaining new=%s learning=%s review=%s",
+        "state(normal=%s filtered=%s) intervals(again=%s hard=%s good=%s easy=%s) "
+        "remaining new=%s learning=%s review=%s",
         deck_id,
         card_id,
         card_type,
         card_state.HasField("normal"),
         card_state.HasField("filtered"),
+        intervals.again,
+        intervals.hard,
+        intervals.good,
+        intervals.easy,
         queued.new_count,
         queued.learning_count,
         queued.review_count,
     )
-    return _load_card_view(col, card_id, card_type)
+    return _load_card_view(col, card_id, card_type, intervals)
 
 
 def get_card_view(
     col: anki.collection.Collection,
     card_id: int,
     card_type: str = "new",
+    intervals: CardIntervals | None = None,
 ) -> CardView | None:
     """Возвращает рендер-вид конкретной карточки или None.
 
@@ -231,11 +250,13 @@ def get_card_view(
             Определяется на стороне front и пробрасывается через форму,
             чтобы не терять эту информацию на back-странице (где
             повторный ``get_queued_cards`` уже не вернёт эту карточку).
+        intervals: предпросмотр интервалов; пробрасывается через форму
+            с front-страницы.
     """
 
     if not col.get_card(card_id):
         return None
-    return _load_card_view(col, card_id, card_type)
+    return _load_card_view(col, card_id, card_type, intervals)
 
 
 def answer_card(
@@ -349,6 +370,7 @@ def _load_card_view(
     col: anki.collection.Collection,
     card_id: int,
     card_type: str = "new",
+    intervals: CardIntervals | None = None,
 ) -> CardView:
     """Собирает CardView по id карточки.
 
@@ -358,6 +380,9 @@ def _load_card_view(
         card_type: тип (``new`` / ``learning`` / ``review`` / ``relearning``),
             определённый из ``queued.cards[0].states.current``. При ``"new"``
             используется как fallback, если тип не был передан.
+        intervals: предпросмотр интервалов (см. ``_compute_intervals``).
+            Если ``None`` — поля ``intervals`` будет ``None``, и шаблон
+            покажет ``"—"`` на back-странице.
     """
 
     card = col.get_card(card_id)
@@ -379,6 +404,7 @@ def _load_card_view(
         note_type_name=str(notetype.get("name", "")),
         fields=fields,
         card_type=card_type,
+        intervals=intervals,
     )
 
 
@@ -463,8 +489,43 @@ def _interval_from_state(state: sp.SchedulingState) -> NextInterval | None:
     return None
 
 
+def _label_or_dash(state: sp.SchedulingState) -> str:
+    """Короткая подпись интервала или ``"—"``, если состояние не распознано."""
+
+    interval = _interval_from_state(state)
+    return interval.label if interval is not None else "—"
+
+
+def _compute_intervals(queued_card) -> CardIntervals:
+    """Предпросмотр интервалов для кнопок Again/Hard/Good/Easy.
+
+    Из ``queued_card.states`` (тип ``SchedulingStates``) берём варианты
+    ``again``/``hard``/``good``/``easy`` — каждое это ``SchedulingState``,
+    из которого ``_interval_from_state`` извлекает интервал.
+
+    Для filtered decks (``rescheduling``) states могут быть ``Filtered`` —
+    ``_interval_from_state`` корректно отдаёт ``"—"`` для них, и
+    предпросмотр показывает прочерки — что корректно: в cram-режиме
+    фактический интервал зависит от выбора пользователя в момент
+    ответа.
+    """
+
+    states = queued_card.states
+    return CardIntervals(
+        again=_label_or_dash(states.again),
+        hard=_label_or_dash(states.hard),
+        good=_label_or_dash(states.good),
+        easy=_label_or_dash(states.easy),
+    )
+
+
 def _format_interval(seconds: int) -> str:
-    """Рендерит секунды в короткий e-ink-friendly формат."""
+    """Рендерит секунды в короткий e-ink-friendly формат.
+
+    Месяцы выводятся как ``X.Y mo`` с одним десятичным разрядом
+    (например, ``4.3 mo``), чтобы было видно дробные значения
+    вроде 4½ месяца (``4.5 mo``).
+    """
 
     if seconds < 60:
         return f"{seconds}s"
@@ -476,7 +537,8 @@ def _format_interval(seconds: int) -> str:
     if days < 30:
         return f"{days}d"
     if days < 365:
-        return f"{days // 30}mo"
+        months = days / 30
+        return f"{months:.1f} mo"
     return f"{days // 365}y"
 
 

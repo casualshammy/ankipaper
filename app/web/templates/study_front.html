@@ -16,15 +16,16 @@
     {{ card.question_html | safe }}
   </article>
 
-  <form method="post" action="/deck/{{ deck_id }}/study" class="form">
-    <input type="hidden" name="card_id" value="{{ card.card_id }}">
-    <input type="hidden" name="card_type" value="{{ card.card_type }}">
-    <div class="actions">
-      <button type="submit" name="reveal" value="1" class="btn btn-primary">Show answer</button>
-    </div>
-  </form>
-
-  <p class="actions-row">
+  <div class="actions-split">
     <a class="btn" href="/">Back to decks</a>
-  </p>
+    <form method="post" action="/deck/{{ deck_id }}/study" class="form form-inline">
+      <input type="hidden" name="card_id" value="{{ card.card_id }}">
+      <input type="hidden" name="card_type" value="{{ card.card_type }}">
+      <input type="hidden" name="again_interval" value="{{ card.intervals.again if card.intervals else '—' }}">
+      <input type="hidden" name="hard_interval" value="{{ card.intervals.hard if card.intervals else '—' }}">
+      <input type="hidden" name="good_interval" value="{{ card.intervals.good if card.intervals else '—' }}">
+      <input type="hidden" name="easy_interval" value="{{ card.intervals.easy if card.intervals else '—' }}">
+      <button type="submit" name="reveal" value="1" class="btn btn-primary">Show answer</button>
+    </form>
+  </div>
 {% endblock %}

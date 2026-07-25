@@ -14,7 +14,8 @@ html, body {
   line-height: 1.4;
 }
 
-a {
+a,
+a:visited {
   color: #000000;
   text-decoration: underline;
 }
@@ -83,6 +84,9 @@ p {
 /* Forms ---------------------------------------------------------------- */
 .form { margin: 16px 0; }
 
+/* Внутри ``.actions-split`` обнуляем дефолтные отступы формы. */
+.form.form-inline { margin: 0; }
+
 .field {
   display: block;
   margin: 12px 0;
@@ -112,6 +116,16 @@ input[type="password"] {
 }
 
 .actions-row { margin: 16px 0; }
+
+/* Разделённые действия (например, "Back to decks" слева и "Show answer"
+   справа на одной строке на странице ревью). */
+.actions-split {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px 0;
+  gap: 8px;
+}
 
 /* Buttons -------------------------------------------------------------- */
 .btn {
@@ -222,6 +236,15 @@ img:not([src]) {
   min-width: 90px;
 }
 
+/* Предпросмотр интервала под кнопкой рейтинга. */
+.rating-interval {
+  display: block;
+  font-size: 14px;
+  font-weight: normal;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
 /* Remaining breakdown ------------------------------------------------- */
 .remaining {
   margin: 12px 0 16px 0;
@@ -279,22 +302,4 @@ img:not([src]) {
   font-variant-numeric: tabular-nums;
   text-align: right;
   margin: 0;
-}
-
-/* Sync indicator (в шапке) ------------------------------------------ */
-.sync-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 4px;
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.sync-spinner {
-  display: inline-block;
-  font-size: 22px;
-  line-height: 1;
-  /* На старых WebKit (Kindle) анимация может не работать; используем
-     просто символ ↻, без CSS-animation. */
 }

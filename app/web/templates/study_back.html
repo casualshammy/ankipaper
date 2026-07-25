@@ -19,10 +19,22 @@
   <form method="post" action="/deck/{{ deck_id }}/study" class="form">
     <input type="hidden" name="card_id" value="{{ card.card_id }}">
     <div class="ratings">
-      <button type="submit" name="rate" value="1" class="btn">Again</button>
-      <button type="submit" name="rate" value="2" class="btn">Hard</button>
-      <button type="submit" name="rate" value="3" class="btn btn-primary">Good</button>
-      <button type="submit" name="rate" value="4" class="btn">Easy</button>
+      <button type="submit" name="rate" value="1" class="btn">
+        Again
+        <span class="rating-interval">({{ card.intervals.again if card.intervals else '—' }})</span>
+      </button>
+      <button type="submit" name="rate" value="2" class="btn">
+        Hard
+        <span class="rating-interval">({{ card.intervals.hard if card.intervals else '—' }})</span>
+      </button>
+      <button type="submit" name="rate" value="3" class="btn btn-primary">
+        Good
+        <span class="rating-interval">({{ card.intervals.good if card.intervals else '—' }})</span>
+      </button>
+      <button type="submit" name="rate" value="4" class="btn">
+        Easy
+        <span class="rating-interval">({{ card.intervals.easy if card.intervals else '—' }})</span>
+      </button>
     </div>
   </form>
 {% endblock %}

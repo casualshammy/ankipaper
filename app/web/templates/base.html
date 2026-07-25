@@ -11,11 +11,6 @@
     <a class="brand" href="/">kindlanki</a>
     <nav class="nav">
       {% block nav %}
-        {# Индикатор media-sync: появляется, когда идёт синхронизация. #}
-        <span id="sync-indicator" class="sync-indicator" style="display:none;">
-          <span class="sync-spinner" aria-hidden="true">&#x21BB;</span>
-          <span id="sync-pct" class="muted">0%</span>
-        </span>
         <form method="post" action="/sync" class="nav-form">
           <button type="submit" id="sync-btn" class="btn">Sync</button>
         </form>
@@ -39,15 +34,14 @@
   {# Глобальный JS: poll статуса media-sync, обновление индикатора. #}
   <script>
     (function () {
-      var ind = document.getElementById('sync-indicator');
-      var pctEl = document.getElementById('sync-pct');
       var btn = document.getElementById('sync-btn');
-      if (!ind || !pctEl) return;
 
-      function hide() { ind.style.display = 'none'; btn.disabled = false; }
+      function hide() { 
+        btn.disabled = false; 
+        btn.textContent = "Sync" 
+      }
       function show(pct) {
-        ind.style.display = 'inline-flex';
-        pctEl.textContent = (pct || 0) + '%';
+        btn.textContent = '🕒 ' + (pct || 0) + '%';
         btn.disabled = true;
       }
 
@@ -62,7 +56,7 @@
               show(100);
               setTimeout(hide, 1500);
             } else if (s.status === 'error') {
-              pctEl.textContent = '!';
+              btn.textContent = '❌ Sync';
               setTimeout(hide, 3000);
             } else {
               hide();

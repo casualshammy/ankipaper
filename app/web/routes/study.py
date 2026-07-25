@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from app import __version__
 from app.domain.scheduler import (
+    CardIntervals,
     Rating,
     answer_card,
     get_card_view,
@@ -115,6 +116,10 @@ async def study_post(
     rate: str = Form(""),
     card_id: str = Form(""),
     card_type: str = Form(""),
+    again_interval: str = Form(""),
+    hard_interval: str = Form(""),
+    good_interval: str = Form(""),
+    easy_interval: str = Form(""),
     session: Session = Depends(get_session),
 ) -> HTMLResponse | RedirectResponse:
     """Обрабатывает Reveal / Answer в рамках сессии ревью."""
@@ -134,10 +139,21 @@ async def study_post(
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
     if reveal:
-        # ``card_type`` приходит с фронта через скрытое поле формы,
-        # чтобы подсветить тег типа на обратной стороне. Фоллбэк на
-        # ``"new"`` — на случай, если форма отправлена без поля.
-        view = await manager.run(get_card_view, card_id_int, card_type or "new")
+        # ``card_type`` и ``*_interval`` приходят с фронта через скрытые
+        # поля формы, чтобы подсветить тег типа и показать предпросмотр
+        # интервалов на обратной стороне. Фоллбэк на ``"new"`` / ``"—"`` —
+        # на случай, если форма отправлена без полей.
+        from app.domain.scheduler import CardIntervals
+
+        intervals = CardIntervals(
+            again=again_interval or "—",
+            hard=hard_interval or "—",
+            good=good_interval or "—",
+            easy=easy_interval or "—",
+        )
+        view = await manager.run(
+            get_card_view, card_id_int, card_type or "new", intervals
+        )
         if view is None:
             return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
