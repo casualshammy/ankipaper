@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm full sync — kindlanki{% endblock %}
+
+{% block content %}
+  <h1>Confirm full sync</h1>
+
+  {% if direction == "upload" %}
+    <p class="error">
+      Are you sure? The data in <strong>AnkiWeb</strong> will be overwritten
+      with the data on this device.
+    </p>
+  {% elif direction == "download" %}
+    <p class="error">
+      Are you sure? The data <strong>on this device</strong> will be overwritten
+      with the data from AnkiWeb.
+    </p>
+  {% endif %}
+
+  {% if server_message %}
+    <p class="notice">{{ server_message }}</p>
+  {% endif %}
+
+  <form method="post" action="/sync/full" class="form">
+    <input type="hidden" name="direction" value="{{ direction }}">
+    <button type="submit" class="btn btn-primary">
+      {% if direction == "upload" %}Yes, overwrite AnkiWeb{% else %}Yes, overwrite this device{% endif %}
+    </button>
+    <a class="btn" href="/sync/conflict">Back</a>
+  </form>
+{% endblock %}

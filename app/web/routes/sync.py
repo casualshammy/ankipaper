@@ -8,14 +8,17 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
 
 from app.storage.account import Account
 from app.sync.client import (
     AuthExpiredError,
+    FullSyncKind,
     SyncError as SyncClientError,
     full_download,
+    full_upload,
     try_sync,
 )
 from app.sync.media_http import sync_media_direct
@@ -50,6 +53,36 @@ async def _collection_is_empty(account: Account) -> bool:
         logger.exception("Failed to count cards in collection")
         return True
     return count == 0
+
+
+def _clear_conflict_state(state: SyncState) -> None:
+    """Resets all per-account conflict-resolution fields."""
+
+    state.conflict_pending = False
+    state.conflict_new_endpoint = None
+    state.conflict_server_message = ""
+    state.conflict_direction = ""
+
+
+def _start_conflict_state(
+    state: SyncState,
+    *,
+    full_sync_kind: FullSyncKind,
+    new_endpoint: str | None,
+    server_message: str,
+) -> None:
+    """Initialises the per-account conflict-resolution state."""
+
+    state.conflict_pending = True
+    state.conflict_new_endpoint = new_endpoint
+    state.conflict_server_message = server_message
+    # For one-sided cases we set the direction up-front so the conflict
+    # page is bypassed in favour of an immediate confirm screen.
+    state.conflict_direction = (
+        full_sync_kind.value
+        if full_sync_kind in (FullSyncKind.DOWNLOAD, FullSyncKind.UPLOAD)
+        else ""
+    )
 
 
 async def _run_media_sync_background(
@@ -100,6 +133,24 @@ async def _run_media_sync_background(
         state.finished_at = time.time()
 
 
+def _start_media_sync_after_full(
+    account: Account,
+    host_key: str,
+    endpoint: str | None,
+) -> None:
+    """Schedules a background media sync after a successful full upload/download."""
+
+    asyncio.create_task(
+        _run_media_sync_background(
+            account=account,
+            host_key=host_key,
+            endpoint=endpoint,
+            data_dir=account.data_dir,
+            last_usn_path=account.last_usn_path(),
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -122,6 +173,13 @@ async def sync_post(
     if account.sync_state.status == "running":
         return RedirectResponse("/", status_code=303)
 
+    # If an unresolved full-sync conflict is pending, route the user back to the
+    # choice page instead of starting a new sync.
+    if account.sync_state.conflict_pending:
+        if account.sync_state.conflict_direction:
+            return RedirectResponse("/sync/full/confirm", status_code=303)
+        return RedirectResponse("/sync/conflict", status_code=303)
+
     manager = account.manager
 
     try:
@@ -136,6 +194,18 @@ async def sync_post(
 
     if result.error:
         return RedirectResponse(f"/?sync_error={result.error}", status_code=303)
+
+    if result.full_sync_kind is not None:
+        _start_conflict_state(
+            account.sync_state,
+            full_sync_kind=result.full_sync_kind,
+            new_endpoint=result.new_endpoint,
+            server_message=result.server_message,
+        )
+        if result.full_sync_kind is FullSyncKind.CONFLICT:
+            return RedirectResponse("/sync/conflict", status_code=303)
+        # One-sided case (FULL_DOWNLOAD / FULL_UPLOAD): skip the choice page.
+        return RedirectResponse("/sync/full/confirm", status_code=303)
 
     is_empty = await _collection_is_empty(account)
     if is_empty:
@@ -156,14 +226,10 @@ async def sync_post(
 
     # Media sync in the background (it can take minutes). Pages poll
     # ``/sync/status.json`` and show the indicator in the top bar.
-    asyncio.create_task(
-        _run_media_sync_background(
-            account=account,
-            host_key=host_key,
-            endpoint=result.new_endpoint,
-            data_dir=account.data_dir,
-            last_usn_path=account.last_usn_path(),
-        )
+    _start_media_sync_after_full(
+        account,
+        host_key,
+        result.new_endpoint,
     )
 
     # Return to the home page; the indicator will show progress.
@@ -180,3 +246,130 @@ async def sync_status_json(
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     return JSONResponse(account.sync_state.to_dict())
+
+
+# --- Full-sync conflict resolution ---------------------------------------
+
+
+@router.get("/sync/conflict", response_class=HTMLResponse)
+async def sync_conflict_get(
+    request: Request,
+    account: Account | None = Depends(get_current_account_optional),
+) -> HTMLResponse:
+    """Renders the direction-choice page for a FULL_SYNC conflict."""
+
+    if account is None:
+        return HTMLResponse(status_code=303, headers={"Location": "/login"})
+    state = account.sync_state
+    if not state.conflict_pending:
+        return HTMLResponse(status_code=303, headers={"Location": "/"})
+    if state.conflict_direction:
+        # The user already picked a direction — straight to the confirm page.
+        return HTMLResponse(
+            status_code=303, headers={"Location": "/sync/full/confirm"}
+        )
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "sync_conflict.html",
+        {
+            "server_message": state.conflict_server_message,
+        },
+    )
+
+
+@router.post("/sync/conflict", response_model=None)
+async def sync_conflict_post(
+    direction: str = Form(...),
+    account: Account | None = Depends(get_current_account_optional),
+) -> RedirectResponse:
+    """Records the user's chosen direction (or cancellation)."""
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+    state = account.sync_state
+    if not state.conflict_pending:
+        return RedirectResponse("/", status_code=303)
+
+    if direction == "cancel":
+        _clear_conflict_state(state)
+        return RedirectResponse("/", status_code=303)
+
+    if direction in ("upload", "download"):
+        state.conflict_direction = direction
+        return RedirectResponse("/sync/full/confirm", status_code=303)
+
+    return RedirectResponse("/sync/conflict", status_code=303)
+
+
+@router.get("/sync/full/confirm", response_class=HTMLResponse)
+async def sync_full_confirm_get(
+    request: Request,
+    account: Account | None = Depends(get_current_account_optional),
+) -> HTMLResponse:
+    """Renders the confirmation page before executing the full upload/download."""
+
+    if account is None:
+        return HTMLResponse(status_code=303, headers={"Location": "/login"})
+    state = account.sync_state
+    if not state.conflict_pending or state.conflict_direction not in ("upload", "download"):
+        return HTMLResponse(status_code=303, headers={"Location": "/"})
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "sync_confirm_full.html",
+        {
+            "direction": state.conflict_direction,
+            "server_message": state.conflict_server_message,
+        },
+    )
+
+
+@router.post("/sync/full", response_model=None)
+async def sync_full_post(
+    direction: str = Form(...),
+    account: Account | None = Depends(get_current_account_optional),
+) -> RedirectResponse:
+    """Executes the previously-confirmed full upload or download."""
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+    state = account.sync_state
+    if not state.conflict_pending or direction != state.conflict_direction or direction not in ("upload", "download"):
+        return RedirectResponse("/", status_code=303)
+
+    host_key = account.host_key()
+    if not host_key:
+        _clear_conflict_state(state)
+        account.delete_host_key()
+        return RedirectResponse("/login?reason=auth_expired", status_code=303)
+
+    endpoint = state.conflict_new_endpoint
+    is_upload = direction == "upload"
+
+    # Capture and clear conflict state up-front so a later navigation to
+    # /sync/conflict doesn't try to re-use the now-consumed decision.
+    _clear_conflict_state(state)
+
+    manager = account.manager
+    try:
+        if is_upload:
+            result = await manager.run(full_upload, host_key, endpoint)
+        else:
+            result = await manager.run(full_download, host_key, endpoint)
+    except AuthExpiredError:
+        account.delete_host_key()
+        return RedirectResponse("/login?reason=auth_expired", status_code=303)
+    except SyncClientError as exc:
+        return RedirectResponse(f"/?sync_error={exc}", status_code=303)
+    except Exception:  # noqa: BLE001
+        logger.exception("Full %s failed", direction)
+        return RedirectResponse(f"/?sync_error=full_{direction}_failed", status_code=303)
+
+    if result.error:
+        return RedirectResponse(f"/?sync_error={result.error}", status_code=303)
+
+    _start_media_sync_after_full(account, host_key, endpoint)
+    return RedirectResponse("/", status_code=303)

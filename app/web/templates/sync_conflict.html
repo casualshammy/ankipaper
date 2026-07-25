@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Sync conflict — kindlanki{% endblock %}
+
+{% block content %}
+  <h1>Sync conflict</h1>
+
+  <p>
+    Both your local collection and the one in AnkiWeb have changes since
+    the last sync, and Anki can't merge them automatically. Choose which
+    side should win:
+  </p>
+
+  {% if server_message %}
+    <p class="notice">{{ server_message }}</p>
+  {% endif %}
+
+  <form method="post" action="/sync/conflict" class="form">
+    <button type="submit" name="direction" value="upload" class="btn">
+      Upload to AnkiWeb
+    </button>
+  </form>
+
+  <form method="post" action="/sync/conflict" class="form">
+    <button type="submit" name="direction" value="download" class="btn">
+      Download from AnkiWeb
+    </button>
+  </form>
+
+  <form method="post" action="/sync/conflict" class="form">
+    <button type="submit" name="direction" value="cancel" class="btn">
+      Cancel
+    </button>
+  </form>
+{% endblock %}

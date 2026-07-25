@@ -17,6 +17,12 @@ class SyncState:
 
     Updated by the background task, read by the JSON endpoint to display
     a progress bar on Kindle.
+
+    The ``conflict_*`` fields hold the state of an unresolved full-sync
+    conflict (or one-sided full download/upload) between the local and
+    remote collections: ``conflict_pending=True`` means the user still
+    needs to either pick a direction (``/sync/conflict``) or confirm the
+    chosen one (``/sync/full/confirm``).
     """
 
     status: str = "idle"  # "idle" | "running" | "done" | "error"
@@ -27,6 +33,13 @@ class SyncState:
     started_at: float = 0.0
     finished_at: float | None = None
     error: str | None = None
+
+    # Unresolved full sync (conflict or one-sided full upload/download).
+    conflict_pending: bool = False
+    conflict_new_endpoint: str | None = None
+    conflict_server_message: str = ""
+    # "upload" | "download" | "" — set once the user picks a direction.
+    conflict_direction: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Returns a dict ready for JSON serialisation."""
