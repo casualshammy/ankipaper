@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import __version__
 from app.config import Settings, get_settings
+from app.web.ratelimit import client_ip
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=__version__,
         docs_url=None,
         redoc_url=None,
+        openapi_url=None,
         lifespan=lifespan,
     )
 
@@ -54,6 +57,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates = Jinja2Templates(
         directory=str(BASE_DIR / "web" / "templates"),
     )
+
+    # Replace uvicorn's built-in access log
+    @app.middleware("http")
+    async def access_log_middleware(request: Request, call_next):
+        start = time.monotonic()
+        response = await call_next(request)
+        duration_ms = (time.monotonic() - start) * 1000.0
+        ip = client_ip(request, settings)
+        query = f"?{request.url.query}" if request.url.query else ""
+        logger.info(
+            '%s - "%s %s%s" %d %.2fms',
+            ip,
+            request.method,
+            request.url.path,
+            query,
+            response.status_code,
+            duration_ms,
+        )
+        if settings.debug_headers:
+            logger.info("headers for %s %s:", request.method, request.url.path)
+            for name, value in request.headers.items():
+                logger.info("  %s: %s", name, value)
+        return response
+
     # CSRF token generator is exposed to every template via the
     # ``csrf_token(request)`` callable — see ``app/web/csrf.py``.
     from app.web.csrf import csrf_token as csrf_token_global

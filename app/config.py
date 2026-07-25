@@ -35,6 +35,16 @@ class Settings(BaseSettings):
         description="True if the application runs behind a reverse proxy (nginx).",
     )
 
+    debug_headers: bool = Field(
+        default=False,
+        description=(
+            "If true, the access-log middleware dumps every incoming request "
+            "header. Useful when diagnosing client-IP / proxy-header issues. "
+            "Off in production — it logs the full Cookie header and any "
+            "Authorization values."
+        ),
+    )
+
     redis_url: str = Field(
         default="redis://localhost:6379/0",
         description="Redis connection URL used for rate limiting.",
