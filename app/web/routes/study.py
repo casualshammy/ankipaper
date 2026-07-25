@@ -16,6 +16,7 @@ from app.domain.scheduler import (
     get_card_view,
     get_deck_due_breakdown,
     get_next_card,
+    set_card_flag,
 )
 from app.storage.account import Account
 from app.sync.client import try_sync
@@ -168,5 +169,37 @@ async def study_post(
         if outcome.next_card_id is None:
             return await _session_done(request, account, deck_id)
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+
+    return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+
+
+@router.post("/deck/{deck_id}/flag", response_model=None)
+async def flag_post(
+    deck_id: int,
+    card_id: str = Form(""),
+    flag: str = Form(""),
+    account: Account | None = Depends(get_current_account_optional),
+) -> RedirectResponse:
+    """Sets the user flag (0..4) on a card and returns to the study page."""
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+
+    if card_id and flag:
+        try:
+            card_id_int = int(card_id)
+            flag_int = int(flag)
+        except ValueError:
+            return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+
+        try:
+            await account.manager.run(set_card_flag, card_id_int, flag_int)
+        except ValueError:
+            logger.warning(
+                "flag_post: invalid flag card_id=%s flag=%s deck_id=%s",
+                card_id,
+                flag,
+                deck_id,
+            )
 
     return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)

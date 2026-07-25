@@ -264,9 +264,39 @@ img:not([src]) {
   opacity: 0.85;
 }
 
+/* Flag controls -------------------------------------------------------- */
+/* User flags (red/yellow/green/blue) can't be shown as colours on e-ink,
+   so we use a native ``<select>`` with text labels. Picking an option
+   auto-submits the form via inline ``onchange``. */
+.flag-form {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.flag-select {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 4px 8px;
+  border: 2px solid #000000;
+  background: #ffffff;
+  color: #000000;
+  min-width: 110px;
+}
+
 /* Remaining breakdown ------------------------------------------------- */
-.remaining {
+.remaining-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   margin: 12px 0 16px 0;
+}
+
+.remaining {
+  margin: 0;
   font-size: 18px;
 }
 

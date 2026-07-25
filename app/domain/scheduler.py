@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 import anki.collection
+import anki.errors
 import anki.scheduler_pb2 as sp
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,16 @@ _RATING_LABELS = {
     Rating.HARD: "Hard",
     Rating.GOOD: "Good",
     Rating.EASY: "Easy",
+}
+
+
+# Anki user flags: 0 = none, 1 = red, 2 = orange, 3 = green, 4 = blue.
+_FLAG_LABELS: dict[int, str] = {
+    0: "none",
+    1: "red",
+    2: "yellow",
+    3: "green",
+    4: "blue",
 }
 
 
@@ -89,6 +100,8 @@ class CardView:
     """Card type: ``new``, ``learning``, ``review`` or ``relearning``."""
     intervals: CardIntervals | None = None
     """Interval preview for the Again/Hard/Good/Easy buttons (or ``None``)."""
+    flag: int = 0
+    """User flag 0..4 (0 = none, 1 = red, 2 = orange, 3 = green, 4 = blue)."""
 
     @property
     def css_class(self) -> str:
@@ -100,6 +113,12 @@ class CardView:
             "review": "tag-current-review",
             "relearning": "tag-current-learning",
         }.get(self.card_type, "tag-current-new")
+
+    @property
+    def flag_label(self) -> str:
+        """Short e-ink-friendly label for the current flag."""
+
+        return _FLAG_LABELS.get(self.flag, "none")
 
 
 @dataclass(slots=True)
@@ -212,6 +231,35 @@ def rebuild_filtered_deck(
     """
 
     result = col._backend.rebuild_filtered_deck(int(deck_id))  # type: ignore[attr-defined]
+    return int(result.count)
+
+
+def set_card_flag(
+    col: anki.collection.Collection,
+    card_id: int,
+    flag: int,
+) -> int:
+    """Sets the user flag on a card (0..4).
+
+    Args:
+        col: open collection.
+        card_id: target card id.
+        flag: 0 = no flag, 1 = red, 2 = orange, 3 = green, 4 = blue.
+
+    Returns:
+        Number of cards whose flag was actually changed (0 or 1).
+
+    Raises:
+        ValueError: if ``flag`` is outside 0..4 or the card does not exist.
+    """
+
+    if not 0 <= flag <= 4:
+        raise ValueError(f"invalid flag: {flag!r}")
+    try:
+        col.get_card(card_id)
+    except anki.errors.NotFoundError as e:
+        raise ValueError(f"card not found: {card_id}") from e
+    result = col.set_user_flag_for_cards(flag, [card_id])
     return int(result.count)
 
 
@@ -428,6 +476,7 @@ def _load_card_view(
         fields=fields,
         card_type=card_type,
         intervals=intervals,
+        flag=int(card.user_flag()),
     )
 
 
