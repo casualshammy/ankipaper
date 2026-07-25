@@ -44,3 +44,43 @@
     </table>
   {% endif %}
 {% endblock %}
+
+{% block scripts %}
+  {# Poll статуса media-sync нужен только на главной: сюда редиректит
+     POST /sync, и индикатор прогресса виден в кнопке Sync. #}
+  <script>
+    (function () {
+      var btn = document.getElementById('sync-btn');
+
+      function hide() {
+        btn.disabled = false;
+        btn.textContent = "Sync";
+      }
+      function show(pct) {
+        btn.textContent = '🕒 ' + (pct || 0) + '%';
+        btn.disabled = true;
+      }
+
+      function poll() {
+        fetch('/sync/status.json', { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (s) {
+            if (s.status === 'running') {
+              show(s.percent || 0);
+              setTimeout(poll, 2000);
+            } else if (s.status === 'done') {
+              show(100);
+              setTimeout(hide, 1500);
+            } else if (s.status === 'error') {
+              btn.textContent = '❌ Sync';
+              setTimeout(hide, 3000);
+            } else {
+              hide();
+            }
+          })
+          .catch(function () { setTimeout(poll, 5000); });
+      }
+      poll();
+    })();
+  </script>
+{% endblock %}
