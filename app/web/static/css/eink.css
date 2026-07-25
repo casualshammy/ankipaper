@@ -178,12 +178,6 @@ table.decks .num {
   font-weight: bold;
 }
 
-table.decks .actions-col {
-  text-align: right;
-  white-space: nowrap;
-  width: 1%;
-}
-
 .deck-action {
   margin: 0;
 }

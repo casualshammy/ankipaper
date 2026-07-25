@@ -37,6 +37,7 @@ async def _session_done(
 
     synced, sync_err, attempted = await _auto_sync_if_possible(account)
     templates: Jinja2Templates = request.app.state.templates
+    is_filtered = await account.manager.run(_deck_is_filtered, deck_id)
     return templates.TemplateResponse(
         request,
         "study_done.html",
@@ -44,6 +45,7 @@ async def _session_done(
             "version": __version__,
             "account": account,
             "deck_id": deck_id,
+            "is_filtered": is_filtered,
             "remaining": 0,
             "remaining_new": 0,
             "remaining_learning": 0,
@@ -53,6 +55,12 @@ async def _session_done(
             "sync_attempted": attempted,
         },
     )
+
+
+def _deck_is_filtered(col, deck_id: int) -> bool:
+    """True if the deck is a filtered (cram) deck."""
+
+    return bool(col.decks.is_filtered(int(deck_id)))
 
 
 async def _auto_sync_if_possible(account: Account) -> tuple[bool, str | None, bool]:
@@ -85,6 +93,7 @@ async def study_get(
         return await _session_done(request, account, deck_id)
 
     breakdown = await manager.run(get_deck_due_breakdown, deck_id)
+    is_filtered = await manager.run(_deck_is_filtered, deck_id)
     return templates.TemplateResponse(
         request,
         "study_front.html",
@@ -92,6 +101,7 @@ async def study_get(
             "version": __version__,
             "account": account,
             "deck_id": deck_id,
+            "is_filtered": is_filtered,
             "card": view,
             "remaining": breakdown.total,
             "remaining_new": breakdown.new,
@@ -145,6 +155,7 @@ async def study_post(
             return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
         breakdown = await manager.run(get_deck_due_breakdown, deck_id)
+        is_filtered = await manager.run(_deck_is_filtered, deck_id)
         return templates.TemplateResponse(
             request,
             "study_back.html",
@@ -152,6 +163,7 @@ async def study_post(
                 "version": __version__,
                 "account": account,
                 "deck_id": deck_id,
+                "is_filtered": is_filtered,
                 "card": view,
                 "remaining": breakdown.total,
                 "remaining_new": breakdown.new,

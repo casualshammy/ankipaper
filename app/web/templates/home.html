@@ -35,7 +35,6 @@
           <th class="num">New</th>
           <th class="num">Learn</th>
           <th class="num">Review</th>
-          <th class="actions-col"></th>
         </tr>
       </thead>
       <tbody>
@@ -45,13 +44,6 @@
             <td class="num">{{ d.new }}</td>
             <td class="num">{{ d.learning }}</td>
             <td class="num">{{ d.review }}</td>
-            <td class="actions-col">
-              {% if d.is_filtered %}
-                <form method="post" action="/deck/{{ d.deck_id }}/rebuild" class="form form-inline deck-action">
-                  <button type="submit" class="btn btn-small">Rebuild</button>
-                </form>
-              {% endif %}
-            </td>
           </tr>
         {% endfor %}
       </tbody>
