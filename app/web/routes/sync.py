@@ -1,4 +1,4 @@
-"""Роуты синхронизации с AnkiWeb."""
+"""Routes for synchronisation with AnkiWeb."""
 
 from __future__ import annotations
 
@@ -28,18 +28,18 @@ router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
-# Хелперы
+# Helpers
 # ---------------------------------------------------------------------------
 
 
 def _count_cards(col: Any) -> int:
-    """Возвращает количество карточек в коллекции (0 — коллекция пуста)."""
+    """Returns the number of cards in the collection (0 means empty)."""
 
     return int(col.card_count())
 
 
 async def _collection_is_empty(account: Account) -> bool:
-    """True, если в локальной коллекции аккаунта нет ни одной карточки."""
+    """True if the local collection of the account contains no cards."""
 
     manager = account.manager
     if not manager.has_collection():
@@ -59,7 +59,7 @@ async def _run_media_sync_background(
     data_dir: Path,
     last_usn_path: Path,
 ) -> None:
-    """Запускает media-sync в фоне, обновляя SyncState аккаунта."""
+    """Runs the media sync in the background, updating the account's SyncState."""
 
     state: SyncState = account.sync_state
     state.status = "running"
@@ -101,7 +101,7 @@ async def _run_media_sync_background(
 
 
 # ---------------------------------------------------------------------------
-# Маршруты
+# Routes
 # ---------------------------------------------------------------------------
 
 
@@ -109,7 +109,7 @@ async def _run_media_sync_background(
 async def sync_post(
     account: Account | None = Depends(get_current_account_optional),
 ) -> RedirectResponse:
-    """Запускает синхронизацию с AnkiWeb для текущего аккаунта."""
+    """Starts synchronisation with AnkiWeb for the current account."""
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
@@ -118,7 +118,7 @@ async def sync_post(
     if not host_key:
         return RedirectResponse("/login?reason=auth_expired", status_code=303)
 
-    # Если sync уже идёт — повторно показываем индикатор.
+    # If a sync is already running — re-show the indicator.
     if account.sync_state.status == "running":
         return RedirectResponse("/", status_code=303)
 
@@ -154,8 +154,8 @@ async def sync_post(
         if full.error:
             return RedirectResponse(f"/?sync_error={full.error}", status_code=303)
 
-    # Media-sync в фоне (может занять минуты). Страницы poll'ят
-    # ``/sync/status.json`` и показывают индикатор в шапке.
+    # Media sync in the background (it can take minutes). Pages poll
+    # ``/sync/status.json`` and show the indicator in the top bar.
     asyncio.create_task(
         _run_media_sync_background(
             account=account,
@@ -166,7 +166,7 @@ async def sync_post(
         )
     )
 
-    # Возвращаемся на главную; индикатор покажет прогресс.
+    # Return to the home page; the indicator will show progress.
     return RedirectResponse("/", status_code=303)
 
 
@@ -174,7 +174,7 @@ async def sync_post(
 async def sync_status_json(
     account: Account | None = Depends(get_current_account_optional),
 ) -> JSONResponse:
-    """Лёгкий JSON-эндпоинт, который poll'ит индикатор в шапке (каждые 2 с)."""
+    """Lightweight JSON endpoint polled by the top-bar indicator (every 2s)."""
 
     if account is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)

@@ -1,1 +1,1 @@
-"""AnkiWeb sync: авторизация, sync-протокол, full download."""
+"""AnkiWeb sync: authentication, sync protocol, full download."""

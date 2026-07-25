@@ -1,4 +1,4 @@
-"""HTTP-роуты приложения."""
+"""Application HTTP routes."""
 
 from app.web.routes import auth, home, media, study, sync
 

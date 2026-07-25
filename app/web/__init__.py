@@ -1,1 +1,1 @@
-"""Пакет web: HTTP-слой приложения (роуты, middleware, шаблоны)."""
+"""Web package: HTTP layer of the application (routes, middleware, templates)."""

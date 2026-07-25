@@ -1,4 +1,4 @@
-"""Авторизация в AnkiWeb через sync v3-протокол."""
+"""Authentication with AnkiWeb via the sync v3 protocol."""
 
 from __future__ import annotations
 
@@ -15,16 +15,16 @@ DEFAULT_ENDPOINT = "https://sync.ankiweb.net/"
 
 
 class AuthError(RuntimeError):
-    """Ошибка авторизации в AnkiWeb (неверные креды, сеть и т.п.)."""
+    """AnkiWeb authentication error (invalid credentials, network issues, etc.)."""
 
 def _open_temp_collection() -> tuple[anki.collection.Collection, str]:
-    """Открывает временную коллекцию для sync_login.
+    """Opens a temporary collection for sync_login.
 
-    anki 26.x не поддерживает ``:memory:`` напрямую (os.path.abspath ломает
-    псевдоним), поэтому создаём реальный временный файл.
+    anki 26.x does not support ``:memory:`` directly (``os.path.abspath``
+    breaks the alias), so we create a real temporary file.
 
     Returns:
-        кортеж (открытая коллекция, путь к временному файлу).
+        tuple of (open collection, path to the temporary file).
     """
 
     fd, path = tempfile.mkstemp(prefix="kindlanki-login-", suffix=".anki21")
@@ -33,14 +33,14 @@ def _open_temp_collection() -> tuple[anki.collection.Collection, str]:
 
 
 def login(username: str, password: str) -> str:
-    """Авторизуется в AnkiWeb и возвращает hostKey.
+    """Logs into AnkiWeb and returns the hostKey.
 
     Args:
-        username: имя пользователя AnkiWeb.
-        password: пароль AnkiWeb.
+        username: AnkiWeb username.
+        password: AnkiWeb password.
 
     Raises:
-        AuthError: при ошибке авторизации или сети.
+        AuthError: on authentication or network error.
     """
 
     if not username or not password:
@@ -70,19 +70,19 @@ def login(username: str, password: str) -> str:
 
 
 def make_auth(host_key: str, endpoint: str | None = None) -> SyncAuth:
-    """Собирает SyncAuth из ранее полученного hostKey.
+    """Builds a SyncAuth from a previously obtained hostKey.
 
     Args:
-        host_key: hostKey, полученный при login.
-        endpoint: URL конкретного sync-сервера (``sync20.ankiweb.net`` и т.п.).
-            Если ``None`` — используется ``_endpoint()`` из настроек.
+        host_key: hostKey obtained at login.
+        endpoint: URL of a specific sync server (``sync20.ankiweb.net`` etc.).
+            If ``None`` — uses ``_endpoint()`` from settings.
     """
 
     return SyncAuth(hkey=host_key, endpoint=endpoint or DEFAULT_ENDPOINT)
 
 
 def _translate_backend_error(exc: BackendError) -> str:
-    """Преобразует BackendError в человекочитаемое сообщение."""
+    """Converts a BackendError into a human-readable message."""
 
     message = str(exc).lower()
 

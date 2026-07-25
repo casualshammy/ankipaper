@@ -1,1 +1,1 @@
-"""Доменный слой: логика поверх коллекции Anki (scheduler, статистика)."""
+"""Domain layer: logic on top of the Anki collection (scheduler, statistics)."""

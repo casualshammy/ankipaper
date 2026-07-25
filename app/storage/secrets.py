@@ -1,7 +1,7 @@
-"""Хранение секретов на диске через Fernet.
+"""Storing secrets on disk via Fernet.
 
-Файл `session.secret` создаётся лениво при первом обращении и используется
-как ключ для шифрования/расшифровки прочих секретов (например, hostKey).
+The `session.secret` file is created lazily on first access and is used
+as the key for encrypting/decrypting other secrets (e.g. the hostKey).
 """
 
 from __future__ import annotations
@@ -20,22 +20,22 @@ DEFAULT_PERMISSIONS = 0o600
 
 
 def _fernet_key_path() -> Path:
-    """Возвращает путь к файлу с Fernet-ключом."""
+    """Returns the path to the Fernet key file."""
 
     return Path("/data/session.secret")
 
 
 def _ensure_data_dir() -> None:
-    """Гарантирует существование родительского каталога для секретов."""
+    """Ensures that the parent directory for secrets exists."""
 
     path = _fernet_key_path()
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _load_or_create_fernet_key() -> bytes:
-    """Загружает Fernet-ключ из файла или создаёт новый.
+    """Loads the Fernet key from the file or creates a new one.
 
-    Файл создаётся с правами 0600.
+    The file is created with mode 0600.
     """
 
     path = _fernet_key_path()
@@ -55,9 +55,9 @@ def _load_or_create_fernet_key() -> bytes:
 
 
 def _fernet() -> Fernet | None:
-    """Возвращает объект Fernet или None, если ключ ещё не создан.
+    """Returns a Fernet instance, or None if the key has not been created yet.
 
-    До первого login файл может отсутствовать — это нормально, не падаем.
+    Before the first login the file may be missing — this is fine, do not fail.
     """
 
     path = _fernet_key_path()
@@ -71,12 +71,12 @@ def _fernet() -> Fernet | None:
 
 
 def _save_secret_at(path: Path, value: str, *, name_for_log: str) -> None:
-    """Шифрует ``value`` и сохраняет в ``path`` (mode 0600).
+    """Encrypts ``value`` and saves it to ``path`` (mode 0600).
 
     Args:
-        path: полный путь к файлу секрета.
-        value: открытый текст для шифрования.
-        name_for_log: человекочитаемое имя для логов (например, ``hostkey.enc``).
+        path: full path to the secret file.
+        value: plaintext value to encrypt.
+        name_for_log: human-readable name for logs (e.g. ``hostkey.enc``).
     """
 
     f = _fernet() or Fernet(_load_or_create_fernet_key())
@@ -92,7 +92,7 @@ def _save_secret_at(path: Path, value: str, *, name_for_log: str) -> None:
 
 
 def _load_secret_at(path: Path, *, name_for_log: str) -> str | None:
-    """Расшифровывает и возвращает секрет по указанному пути, или None."""
+    """Decrypts and returns the secret at the given path, or None."""
 
     if not path.exists():
         return None
@@ -110,7 +110,7 @@ def _load_secret_at(path: Path, *, name_for_log: str) -> str | None:
 
 
 def _delete_secret_at(path: Path) -> None:
-    """Удаляет файл секрета по указанному пути. Ошибки игнорируются."""
+    """Deletes the secret file at the given path. Errors are ignored."""
 
     try:
         path.unlink()
@@ -121,15 +121,14 @@ def _delete_secret_at(path: Path) -> None:
 
 
 def save_secret(name: str, value: str) -> None:
-    """Шифрует ``value`` и сохраняет в ``<data_dir>/<name>`` (mode 0600).
+    """Encrypts ``value`` and saves it to ``<data_dir>/<name>`` (mode 0600).
 
-    Используется для глобальных секретов уровня инстанса
-    (на данный момент — не используется; оставлено для обратной
-    совместимости и будущих глобальных секретов).
+    Used for instance-wide global secrets (currently not used; kept for
+    backward compatibility and future global secrets).
 
     Args:
-        name: имя файла (например, "hostkey.enc").
-        value: открытый текст для шифрования.
+        name: file name (e.g. ``"hostkey.enc"``).
+        value: plaintext value to encrypt.
     """
 
     path = Path("/data") / name
@@ -137,39 +136,39 @@ def save_secret(name: str, value: str) -> None:
 
 
 def load_secret(name: str) -> str | None:
-    """Расшифровывает и возвращает секрет из ``<data_dir>/<name>``, или None.
+    """Decrypts and returns the secret from ``<data_dir>/<name>``, or None.
 
     Args:
-        name: имя файла секрета (например, "hostkey.enc").
+        name: secret file name (e.g. ``"hostkey.enc"``).
     """
 
     return _load_secret_at(Path("/data") / name, name_for_log=name)
 
 
 def delete_secret(name: str) -> None:
-    """Удаляет файл секрета, если он существует. Ошибки игнорируются."""
+    """Deletes the secret file if it exists. Errors are ignored."""
 
     _delete_secret_at(Path("/data") / name)
 
 
 def save_secret_in(account_dir: Path, name: str, value: str) -> None:
-    """Шифрует ``value`` и сохраняет в ``<account_dir>/<name>`` (mode 0600).
+    """Encrypts ``value`` and saves it to ``<account_dir>/<name>`` (mode 0600).
 
     Args:
-        account_dir: каталог аккаунта (``data/accounts/<id>``).
-        name: имя файла (например, ``"hostkey.enc"``).
-        value: открытый текст для шифрования.
+        account_dir: account directory (``data/accounts/<id>``).
+        name: file name (e.g. ``"hostkey.enc"``).
+        value: plaintext value to encrypt.
     """
 
     _save_secret_at(account_dir / name, value, name_for_log=f"{account_dir.name}/{name}")
 
 
 def load_secret_in(account_dir: Path, name: str) -> str | None:
-    """Расшифровывает секрет из ``<account_dir>/<name>``, или None.
+    """Decrypts the secret from ``<account_dir>/<name>``, or None.
 
     Args:
-        account_dir: каталог аккаунта (``data/accounts/<id>``).
-        name: имя файла секрета.
+        account_dir: account directory (``data/accounts/<id>``).
+        name: secret file name.
     """
 
     return _load_secret_at(
@@ -179,6 +178,6 @@ def load_secret_in(account_dir: Path, name: str) -> str | None:
 
 
 def delete_secret_in(account_dir: Path, name: str) -> None:
-    """Удаляет секрет в указанном каталоге аккаунта. Ошибки игнорируются."""
+    """Deletes the secret in the given account directory. Errors are ignored."""
 
     _delete_secret_at(account_dir / name)

@@ -1,13 +1,13 @@
-"""Cookie-сессии: чтение и запись через itsdangerous.
+"""Cookie sessions: read and write via itsdangerous.
 
-Файл ``session.secret`` создаётся лениво при первом обращении. До этого
-момента ``_serializer()`` возвращает None, а ``read_session()`` —
-«не аутентифицирован». Это намеренно: после login файл появляется, и
-последующие запросы читают сессии корректно.
+The ``session.secret`` file is created lazily on first access. Until
+then ``_serializer()`` returns ``None``, and ``read_session()`` returns
+"not authenticated". This is intentional: after login the file appears,
+and subsequent requests read sessions correctly.
 
-С версией с поддержкой нескольких аккаунтов cookie хранит
-``{"user": "<account_id>"}`` — это id, по которому :class:`AccountStore`
-находит нужный аккаунт в памяти (или подгружает с диска).
+In the multi-account version the cookie stores
+``{"user": "<account_id>"}`` — the id by which :class:`AccountStore`
+finds the right account in memory (or loads it from disk).
 """
 
 from __future__ import annotations
@@ -29,14 +29,14 @@ COOKIE_KEY = "user"
 
 @dataclass(slots=True)
 class Session:
-    """Минимальная сессия: факт аутентификации + текущий аккаунт."""
+    """Minimal session: authentication flag + current account."""
 
     is_authenticated: bool
     account_id: str | None = None
 
 
 def _serializer() -> URLSafeSerializer | None:
-    """Возвращает itsdangerous-сериализатор или None, если ключ ещё не создан."""
+    """Returns an itsdangerous serializer, or None if the key has not been created yet."""
 
     from app.storage.secrets import _fernet_key_path
 
@@ -52,19 +52,19 @@ def _serializer() -> URLSafeSerializer | None:
 
 
 def _max_age_seconds() -> int:
-    """Время жизни cookie в секундах."""
+    """Cookie lifetime in seconds."""
 
     return get_settings().cookie_max_age_days * 86400
 
 
 def _secure_cookie() -> bool:
-    """Возвращает True, если cookie нужно ставить с флагом Secure."""
+    """Returns True if the cookie should be set with the Secure flag."""
 
     return get_settings().behind_proxy
 
 
 def read_session(request: Request) -> Session:
-    """Читает cookie и возвращает Session. Без падения при отсутствии секрета."""
+    """Reads the cookie and returns a Session. Does not fail if the secret is missing."""
 
     s = _serializer()
     if s is None:
@@ -90,11 +90,11 @@ def read_session(request: Request) -> Session:
 
 
 def write_session(response: Response, account_id: str) -> None:
-    """Ставит cookie аутентифицированной сессии для указанного аккаунта.
+    """Sets an authenticated session cookie for the given account.
 
     Args:
-        response: объект Response, в который ставится cookie.
-        account_id: идентификатор аккаунта (``Account.id``).
+        response: Response object on which to set the cookie.
+        account_id: account identifier (``Account.id``).
     """
 
     s = _serializer()
@@ -116,7 +116,7 @@ def write_session(response: Response, account_id: str) -> None:
 
 
 def clear_session(response: Response) -> None:
-    """Удаляет cookie сессии."""
+    """Deletes the session cookie."""
 
     response.delete_cookie(
         key=COOKIE_NAME,

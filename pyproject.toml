@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kindlanki"
 version = "0.1.0"
-description = "Anki-клиент для Kindle на базе официального sync-протокола AnkiWeb"
+description = "Anki client for Kindle built on top of the official AnkiWeb sync protocol"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }

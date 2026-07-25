@@ -1,4 +1,4 @@
-"""Роуты авторизации: /login, /logout."""
+"""Authentication routes: /login, /logout."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ async def login_get(
     reason: str | None = None,
     session: Session = Depends(get_session),
 ) -> HTMLResponse | RedirectResponse:
-    """Отображает форму логина или редиректит на главную, если уже залогинен."""
+    """Renders the login form, or redirects to the home page if already signed in."""
 
     if session.is_authenticated and session.account_id:
         return RedirectResponse("/", status_code=303)
@@ -50,7 +50,7 @@ async def login_post(
     username: str = Form(""),
     password: str = Form(""),
 ) -> HTMLResponse:
-    """Принимает логин/пароль, выполняет авторизацию, ставит cookie."""
+    """Accepts login/password, performs authentication, sets the cookie."""
 
     templates: Jinja2Templates = request.app.state.templates
     try:
@@ -85,11 +85,11 @@ async def login_post(
 
 @router.post("/logout", response_model=None)
 async def logout_post() -> RedirectResponse:
-    """Удаляет cookie, редиректит на /login.
+    """Deletes the cookie and redirects to /login.
 
-    hostKey и файлы коллекции не удаляются — пользователь может снова
-    залогиниться в этот же аккаунт. Полное удаление аккаунта —
-    отдельный сценарий (TODO: при необходимости добавить ``/account/delete``).
+    The hostKey and collection files are not removed — the user can sign
+    back in to the same account. Full account deletion is a separate
+    scenario (TODO: add ``/account/delete`` if needed).
     """
 
     response = RedirectResponse("/login", status_code=303)

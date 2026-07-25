@@ -1,1 +1,1 @@
-"""Пакет шаблонов Jinja2."""
+"""Jinja2 templates package."""

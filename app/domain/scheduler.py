@@ -1,8 +1,8 @@
-"""Логика поверх коллекции Anki: статистика колод, ревью карточек, ответы.
+"""Logic on top of the Anki collection: deck statistics, card reviews, answers.
 
-Все запросы к локальной коллекции идут через backend API
-(``col._backend.get_queued_cards``, ``backend.answer_card`` и т.п.) —
-не через прямой SQL.
+All requests to the local collection go through the backend API
+(``col._backend.get_queued_cards``, ``backend.answer_card`` and similar) —
+not through direct SQL.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class Rating(IntEnum):
-    """4-кнопочная шкала ответов Anki."""
+    """Anki's 4-button answer scale."""
 
     AGAIN = 1
     HARD = 2
@@ -42,7 +42,7 @@ _RATING_LABELS = {
 
 @dataclass(slots=True)
 class DeckStats:
-    """Статистика по одной колоде."""
+    """Statistics for a single deck."""
 
     deck_id: int
     name: str
@@ -54,7 +54,7 @@ class DeckStats:
 
 @dataclass(slots=True)
 class DueBreakdown:
-    """Разбивка due-карточек для текущей сессии."""
+    """Breakdown of due cards for the current session."""
 
     new: int
     learning: int
@@ -67,7 +67,7 @@ class DueBreakdown:
 
 @dataclass(slots=True)
 class CardIntervals:
-    """Предпросмотр интервалов для кнопок рейтинга."""
+    """Interval preview for the rating buttons."""
 
     again: str
     hard: str
@@ -77,7 +77,7 @@ class CardIntervals:
 
 @dataclass(slots=True)
 class CardView:
-    """Подготовленное для ревью представление карточки."""
+    """Card view prepared for review."""
 
     card_id: int
     question_html: str
@@ -86,13 +86,13 @@ class CardView:
     note_type_name: str
     fields: list[tuple[str, str]]
     card_type: str = "new"
-    """Тип карточки: ``new``, ``learning``, ``review`` или ``relearning``."""
+    """Card type: ``new``, ``learning``, ``review`` or ``relearning``."""
     intervals: CardIntervals | None = None
-    """Предпросмотр интервалов для кнопок Again/Hard/Good/Easy (или ``None``)."""
+    """Interval preview for the Again/Hard/Good/Easy buttons (or ``None``)."""
 
     @property
     def css_class(self) -> str:
-        """CSS-класс текущего типа карточки (для подсветки в шаблоне)."""
+        """CSS class for the current card type (for highlighting in the template)."""
 
         return {
             "new": "tag-current-new",
@@ -104,7 +104,7 @@ class CardView:
 
 @dataclass(slots=True)
 class NextInterval:
-    """Через сколько карточка снова будет due."""
+    """Time after which the card is due again."""
 
     seconds: int
     label: str
@@ -112,7 +112,7 @@ class NextInterval:
 
 @dataclass(slots=True)
 class AnswerOutcome:
-    """Результат применения ответа."""
+    """Result of applying an answer."""
 
     next_card_id: int | None
     next_interval: NextInterval | None
@@ -122,7 +122,7 @@ def _queued_card_for(
     col: anki.collection.Collection,
     deck_id: int,
 ) -> sp.QueuedCards | None:
-    """Возвращает queued-карточки для колоды, или None если колода не выбрана."""
+    """Returns queued cards for the deck, or None if the deck is not selected."""
 
     col.decks.select(int(deck_id))
     return col._backend.get_queued_cards(  # type: ignore[attr-defined]
@@ -132,11 +132,11 @@ def _queued_card_for(
 
 
 def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
-    """Возвращает статистику по всем колодам (new / learning / review).
+    """Returns statistics for all decks (new / learning / review).
 
-    Использует ``get_queued_cards`` для каждой колоды — это даёт готовые
-    счётчики без ручного SQL и без риска перепутать ``days_elapsed``,
-    ``queue``/``type`` и т.п.
+    Uses ``get_queued_cards`` for each deck — this gives ready-made counts
+    without manual SQL and without the risk of mixing up ``days_elapsed``,
+    ``queue``/``type``, etc.
     """
 
     result: list[DeckStats] = []
@@ -172,7 +172,7 @@ def get_deck_due_count(
     col: anki.collection.Collection,
     deck_id: int,
 ) -> int:
-    """Сколько всего due-карточек в колоде (new + learning + review)."""
+    """How many due cards are in the deck in total (new + learning + review)."""
 
     return get_deck_due_breakdown(col, deck_id).total
 
@@ -181,10 +181,10 @@ def get_deck_due_breakdown(
     col: anki.collection.Collection,
     deck_id: int,
 ) -> "DueBreakdown":
-    """Разбивка due-карточек по new/learning/review для текущего колоды.
+    """Breakdown of due cards by new/learning/review for the current deck.
 
-    Использует ``col._backend.get_queued_cards``, который возвращает
-    готовые счётчики без ручного SQL.
+    Uses ``col._backend.get_queued_cards``, which returns ready-made counts
+    without manual SQL.
     """
 
     queued = _queued_card_for(col, deck_id)
@@ -201,14 +201,14 @@ def rebuild_filtered_deck(
     col: anki.collection.Collection,
     deck_id: int,
 ) -> int:
-    """Пересобирает filtered-колоду по её search-термам.
+    """Rebuilds a filtered deck using its search terms.
 
     Args:
-        col: открытая коллекция.
-        deck_id: id filtered-колоды.
+        col: open collection.
+        deck_id: id of the filtered deck.
 
     Returns:
-        Количество карточек, попавших в колоду после rebuild.
+        Number of cards that ended up in the deck after the rebuild.
     """
 
     result = col._backend.rebuild_filtered_deck(int(deck_id))  # type: ignore[attr-defined]
@@ -219,7 +219,7 @@ def get_next_card(
     col: anki.collection.Collection,
     deck_id: int,
 ) -> CardView | None:
-    """Возвращает следующую due-карточку в колоде или None."""
+    """Returns the next due card in the deck, or None."""
 
     queued = _queued_card_for(col, deck_id)
     if queued is None or not queued.cards:
@@ -261,17 +261,17 @@ def get_card_view(
     card_type: str = "new",
     intervals: CardIntervals | None = None,
 ) -> CardView | None:
-    """Возвращает рендер-вид конкретной карточки или None.
+    """Returns the render view of a specific card, or None.
 
     Args:
-        col: открытая коллекция.
-        card_id: id карточки.
-        card_type: тип карточки (``new``/``learning``/``review``/``relearning``).
-            Определяется на стороне front и пробрасывается через форму,
-            чтобы не терять эту информацию на back-странице (где
-            повторный ``get_queued_cards`` уже не вернёт эту карточку).
-        intervals: предпросмотр интервалов; пробрасывается через форму
-            с front-страницы.
+        col: open collection.
+        card_id: card id.
+        card_type: card type (``new``/``learning``/``review``/``relearning``).
+            Determined on the front side and passed through the form so
+            that this information is not lost on the back page (where a
+            repeated ``get_queued_cards`` will no longer return this card).
+        intervals: interval preview; passed through the form from the
+            front page.
     """
 
     if not col.get_card(card_id):
@@ -287,23 +287,24 @@ def answer_card(
     current_state: sp.SchedulingState | None = None,
     deck_id: int | None = None,
 ) -> AnswerOutcome:
-    """Применяет ответ пользователя и возвращает следующий шаг.
+    """Applies the user's answer and returns the next step.
 
-    States берутся из ``get_queued_cards`` для текущей колоды — это гарантирует,
-    что переданные в ``answer_card`` состояния соответствуют позиции карточки
-    в due-очереди. Без этого Anki может интерпретировать переход некорректно
-    (например, после ``Good`` карточка уходит в ``review`` с ``due`` завтра,
-    а в текущей колоде из-за этого ломается подсчёт ``new``/``review``).
+    States are taken from ``get_queued_cards`` for the current deck — this
+    guarantees that the states passed to ``answer_card`` correspond to the
+    card's position in the due queue. Without this, Anki may interpret the
+    transition incorrectly (for example, after ``Good`` the card goes to
+    ``review`` with ``due`` tomorrow, and the ``new``/``review`` count in
+    the current deck breaks because of that).
 
     Args:
-        col: открытая коллекция.
-        card_id: id карточки.
-        rating: выбранный рейтинг (1..4).
-        new_state: готовое ``new_state`` (если None — берётся из
+        col: open collection.
+        card_id: card id.
+        rating: chosen rating (1..4).
+        new_state: ready ``new_state`` (if None — taken from
             ``get_queued_cards``).
-        current_state: готовое ``current_state``.
-        deck_id: id колоды, из которой берётся очередь. Если None —
-            используется колода, в которой сейчас лежит карточка.
+        current_state: ready ``current_state``.
+        deck_id: id of the deck from which the queue is taken. If None —
+            the deck the card currently lives in is used.
     """
 
     backend = col._backend  # type: ignore[attr-defined]
@@ -329,8 +330,9 @@ def answer_card(
                 int(rating),
             )
         else:
-            # Карточки нет в due-очереди (например, она не due, или ответ
-            # пришёл не из текущей колоды). Фоллбэк на get_scheduling_states.
+            # Card is not in the due queue (e.g. it's not due, or the
+            # answer came from a different deck). Fallback to
+            # get_scheduling_states.
             logger.warning(
                 "answer_card: card_id=%s NOT in deck_id=%s queue (head=%s); using get_scheduling_states",
                 card_id,
@@ -357,12 +359,13 @@ def answer_card(
         )
     )
 
-    # ВАЖНО: для поиска следующей карточки используем ИСХОДНУЮ колоду
-    # (переданную пользователем), а не ``card.did``. ``card.did`` — это leaf-deck
-    # карточки, и в Anki parent-deck включает child-decks, но не наоборот:
-    # если ``deck_id`` — parent, а карточка лежит в child, то после ответа
-    # переключение на ``card.did`` сужает очередь только до child'а — там
-    # может не быть due-карточек, хотя в parent'е они есть.
+    # IMPORTANT: when looking for the next card we use the ORIGINAL deck
+    # (the one passed by the caller), not ``card.did``. ``card.did`` is the
+    # leaf deck of the card, and in Anki a parent deck includes child
+    # decks, but not vice versa: if ``deck_id`` is the parent and the card
+    # lives in a child, then switching to ``card.did`` after the answer
+    # narrows the queue to the child only — there may be no due cards
+    # there even though there are some in the parent.
     next_deck_id = int(deck_id) if deck_id is not None else int(col.get_card(card_id).did)
     queued = _queued_card_for(col, next_deck_id)
     next_cid: int | None = None
@@ -392,17 +395,17 @@ def _load_card_view(
     card_type: str = "new",
     intervals: CardIntervals | None = None,
 ) -> CardView:
-    """Собирает CardView по id карточки.
+    """Builds a CardView for a card by id.
 
     Args:
-        col: открытая коллекция.
-        card_id: id карточки.
-        card_type: тип (``new`` / ``learning`` / ``review`` / ``relearning``),
-            определённый из ``queued.cards[0].states.current``. При ``"new"``
-            используется как fallback, если тип не был передан.
-        intervals: предпросмотр интервалов (см. ``_compute_intervals``).
-            Если ``None`` — поля ``intervals`` будет ``None``, и шаблон
-            покажет ``"—"`` на back-странице.
+        col: open collection.
+        card_id: card id.
+        card_type: type (``new`` / ``learning`` / ``review`` / ``relearning``),
+            determined from ``queued.cards[0].states.current``. ``"new"`` is
+            used as a fallback if no type was passed.
+        intervals: interval preview (see ``_compute_intervals``). If
+            ``None`` — the ``intervals`` field will be ``None``, and the
+            template will show ``"—"`` on the back page.
     """
 
     card = col.get_card(card_id)
@@ -429,12 +432,12 @@ def _load_card_view(
 
 
 def _normal_to_card_type(normal: sp.Normal) -> str:
-    """Преобразует ``SchedulingState.Normal`` в пользовательский тип.
+    """Converts ``SchedulingState.Normal`` to a user-facing type.
 
-    ``Normal`` — это вложенный ``oneof``-вариант ``SchedulingState`` и
-    одновременно отдельное поле ``ReschedulingFilter.original_state``.
-    У него нет поля ``normal`` (как у ``SchedulingState``), поэтому
-    разбираем напрямую.
+    ``Normal`` is a nested ``oneof`` variant of ``SchedulingState`` and
+    at the same time a separate field ``ReschedulingFilter.original_state``.
+    It has no ``normal`` field (unlike ``SchedulingState``), so we unpack
+    it directly.
     """
 
     if normal.HasField("new"):
@@ -449,15 +452,15 @@ def _normal_to_card_type(normal: sp.Normal) -> str:
 
 
 def _card_type_from_state(state: sp.SchedulingState) -> str:
-    """Определяет пользовательский тип карточки (``SchedulingState.current``).
+    """Determines the user-facing card type (``SchedulingState.current``).
 
-    Учитывает три варианта ``SchedulingState``:
-    - ``normal`` — обычная колода; подтип по ``normal.kind`` (new /
+    Handles three variants of ``SchedulingState``:
+    - ``normal`` — a regular deck; subtype by ``normal.kind`` (new /
       learning / review / relearning);
-    - ``filtered.rescheduling`` — filtered deck в режиме rescheduling;
-      ``original_state`` имеет тип ``Normal`` (см. ``scheduler.proto:114-115``),
-      читаем через ``_normal_to_card_type``;
-    - ``filtered.preview`` — preview-режим; трактуем как ``"new"``.
+    - ``filtered.rescheduling`` — a filtered deck in rescheduling mode;
+      ``original_state`` has type ``Normal`` (see
+      ``scheduler.proto:114-115``); we read it via ``_normal_to_card_type``;
+    - ``filtered.preview`` — preview mode; treated as ``"new"``.
     """
 
     if state.HasField("normal"):
@@ -465,20 +468,20 @@ def _card_type_from_state(state: sp.SchedulingState) -> str:
 
     if state.HasField("filtered"):
         filtered = state.filtered
-        # Rescheduling: рекурсивно читаем оригинальный state.
+        # Rescheduling: read the original state recursively.
         if filtered.HasField("rescheduling"):
             return _normal_to_card_type(filtered.rescheduling.original_state)
-        # Preview (ещё не начали учить) — для UI показываем как ``new``.
+        # Preview (haven't started learning yet) — show as ``new`` for the UI.
         return "new"
 
     return "new"
 
 
 def _interval_from_state(state: sp.SchedulingState) -> NextInterval | None:
-    """Преобразует SchedulingState в человекочитаемый интервал.
+    """Converts a SchedulingState into a human-readable interval.
 
-    ``Relearning`` в актуальной версии прото содержит вложенные
-    ``review`` (дни) и ``learning`` (секунды); см.
+    ``Relearning`` in the current version of the proto contains nested
+    ``review`` (days) and ``learning`` (seconds); see
     ``_anki_repo/proto/anki/scheduler.proto:98-101``.
     """
 
@@ -510,24 +513,24 @@ def _interval_from_state(state: sp.SchedulingState) -> NextInterval | None:
 
 
 def _label_or_dash(state: sp.SchedulingState) -> str:
-    """Короткая подпись интервала или ``"—"``, если состояние не распознано."""
+    """Short interval label, or ``"—"`` if the state is not recognised."""
 
     interval = _interval_from_state(state)
     return interval.label if interval is not None else "—"
 
 
 def _compute_intervals(queued_card) -> CardIntervals:
-    """Предпросмотр интервалов для кнопок Again/Hard/Good/Easy.
+    """Interval preview for the Again/Hard/Good/Easy buttons.
 
-    Из ``queued_card.states`` (тип ``SchedulingStates``) берём варианты
-    ``again``/``hard``/``good``/``easy`` — каждое это ``SchedulingState``,
-    из которого ``_interval_from_state`` извлекает интервал.
+    From ``queued_card.states`` (type ``SchedulingStates``) we take the
+    ``again``/``hard``/``good``/``easy`` variants — each is a
+    ``SchedulingState`` from which ``_interval_from_state`` extracts the
+    interval.
 
-    Для filtered decks (``rescheduling``) states могут быть ``Filtered`` —
-    ``_interval_from_state`` корректно отдаёт ``"—"`` для них, и
-    предпросмотр показывает прочерки — что корректно: в cram-режиме
-    фактический интервал зависит от выбора пользователя в момент
-    ответа.
+    For filtered decks (``rescheduling``) the states can be ``Filtered`` —
+    ``_interval_from_state`` correctly returns ``"—"`` for them, and the
+    preview shows dashes — which is correct: in cram mode the actual
+    interval depends on the user's choice at the moment of the answer.
     """
 
     states = queued_card.states
@@ -540,11 +543,11 @@ def _compute_intervals(queued_card) -> CardIntervals:
 
 
 def _format_interval(seconds: int) -> str:
-    """Рендерит секунды в короткий e-ink-friendly формат.
+    """Renders seconds in a short e-ink-friendly format.
 
-    Месяцы выводятся как ``X.Y mo`` с одним десятичным разрядом
-    (например, ``4.3 mo``), чтобы было видно дробные значения
-    вроде 4½ месяца (``4.5 mo``).
+    Months are shown as ``X.Y mo`` with a single decimal place
+    (for example, ``4.3 mo``), so that fractional values like
+    4½ months (``4.5 mo``) are visible.
     """
 
     if seconds < 60:
@@ -563,26 +566,26 @@ def _format_interval(seconds: int) -> str:
 
 
 def _strip_html(text: str) -> str:
-    """Минимальный HTML-stripper для plain-рендера на Kindle."""
+    """Minimal HTML stripper for plain rendering on Kindle."""
 
     cleaned = re.sub(r"<[^>]+>", "", text)
     return cleaned.replace("&nbsp;", " ").strip()
 
 
 def _sanitize_for_eink(html: str) -> str:
-    """Готовит HTML карточки к рендеру на e-ink Kindle.
+    """Prepares card HTML for rendering on e-ink Kindle.
 
-    - Удаляет ``<script>`` (Kindle WebKit 1.x не поддерживает JS и это дыра
-      в безопасности).
-    - Удаляет ``<audio>``, ``<video>``, ``<source>``, ``<iframe>``,
-      ``<object>``, ``<embed>``, ``<canvas>`` — Kindle их не воспроизведёт.
-    - Переписывает ``<img src="filename">`` → ``<img src="/ms/filename">``,
-      чтобы картинки грузились через наш media-роут
-      (``app/web/routes/media.py``). Anki хранит файлы в
-      ``collection.media/`` рядом с ``collection.anki21``.
-    - Сохраняет ``<style>`` шаблона карточки — без него карточка теряет
-      оригинальное оформление Anki. Проблема синего ``color: blue`` для
-      cloze решается ``!important``-override в ``eink.css``.
+    - Removes ``<script>`` (Kindle WebKit 1.x does not support JS and it is
+      a security hole).
+    - Removes ``<audio>``, ``<video>``, ``<source>``, ``<iframe>``,
+      ``<object>``, ``<embed>``, ``<canvas>`` — Kindle cannot play them.
+    - Rewrites ``<img src="filename">`` → ``<img src="/ms/filename">``, so
+      that images are loaded through our media route
+      (``app/web/routes/media.py``). Anki stores files in
+      ``collection.media/`` next to ``collection.anki21``.
+    - Preserves ``<style>`` of the card template — without it the card
+      loses Anki's original styling. The blue ``color: blue`` issue for
+      cloze is handled by an ``!important`` override in ``eink.css``.
     """
 
     html = re.sub(
@@ -592,8 +595,8 @@ def _sanitize_for_eink(html: str) -> str:
         flags=re.DOTALL | re.IGNORECASE,
     )
 
-    # Удаляем целиком с содержимым (relearn_audio/[sound:...] Anki
-    # рендерит как <audio>, видео — как <video> и т.п.).
+    # Remove the whole tag with contents (Anki renders relearn_audio/[sound:...]
+    # as <audio>, video as <video>, etc.).
     for tag in ("audio", "video", "source", "iframe", "object", "embed", "canvas"):
         html = re.sub(
             rf"<{tag}\b[^>]*>.*?</{tag}>",
@@ -601,7 +604,7 @@ def _sanitize_for_eink(html: str) -> str:
             html,
             flags=re.DOTALL | re.IGNORECASE,
         )
-        # Самозакрывающиеся варианты: <tag ... />
+        # Self-closing variants: <tag ... />
         html = re.sub(
             rf"<{tag}\b[^>]*/?>",
             "",
@@ -609,12 +612,12 @@ def _sanitize_for_eink(html: str) -> str:
             flags=re.IGNORECASE,
         )
 
-    # <img src="filename"> → <img src="/ms/filename">. Работаем только с
-    # атрибутом src; остальные атрибуты (alt, style, width, height) оставляем.
+    # <img src="filename"> → <img src="/ms/filename">. Only touch the src
+    # attribute; keep the rest (alt, style, width, height) intact.
     def _rewrite_img(match: re.Match[str]) -> str:
         full = match.group(0)
         src = match.group("src")
-        # Не трогаем абсолютные URL и data:-URI.
+        # Do not touch absolute URLs and data: URIs.
         if src.startswith(("http://", "https://", "data:", "/ms/")):
             return full
         return re.sub(
@@ -632,7 +635,7 @@ def _sanitize_for_eink(html: str) -> str:
     )
 
     # <link href="filename.css"> → <link href="/ms/filename.css">. Anki
-    # встраивает стили notetype через <link rel="stylesheet">.
+    # embeds notetype styles via <link rel="stylesheet">.
     def _rewrite_link(match: re.Match[str]) -> str:
         full = match.group(0)
         href = match.group("href")
@@ -652,8 +655,8 @@ def _sanitize_for_eink(html: str) -> str:
         flags=re.IGNORECASE,
     )
 
-    # Внутри <style>: url(filename.ttf) → url(/ms/filename.ttf). Anki
-    # встраивает шрифты через @font-face { src: url("_NotoSansJP.otf") }.
+    # Inside <style>: url(filename.ttf) → url(/ms/filename.ttf). Anki
+    # embeds fonts via @font-face { src: url("_NotoSansJP.otf") }.
     def _rewrite_style_url(match: re.Match[str]) -> str:
         full = match.group(0)
         url = match.group("url")

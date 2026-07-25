@@ -15,42 +15,42 @@ logger = logging.getLogger(__name__)
 
 
 class SyncError(RuntimeError):
-    """Сбой синхронизации коллекции с AnkiWeb."""
+    """Failure to synchronise the collection with AnkiWeb."""
 
 
 class AuthExpiredError(SyncError):
-    """Сохранённый hostKey отвергнут сервером (смена пароля, блокировка)."""
+    """The stored hostKey was rejected by the server (password change, ban)."""
 
 
 @dataclass(slots=True)
 class SyncResult:
-    """Результат операции синхронизации."""
+    """Result of a sync operation."""
 
     required: bool
-    """True, если sync фактически прошёл (на сервере были изменения)."""
+    """True if the sync actually ran (there were changes on the server)."""
 
     new_endpoint: str | None
-    """Новый endpoint, если сервер запросил миграцию."""
+    """New endpoint if the server requested a migration."""
 
     error: str | None = None
-    """Человекочитаемое сообщение об ошибке, если sync не удался."""
+    """Human-readable error message if the sync failed."""
 
     auth_expired: bool = False
-    """True, если hostKey отвергнут и нужно заново залогиниться."""
+    """True if the hostKey was rejected and the user needs to log in again."""
 
 
 def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) -> SyncResult:
-    """Синхронизирует локальную коллекцию с AnkiWeb (incremental).
+    """Synchronises the local collection with AnkiWeb (incremental).
 
     Args:
-        col: открытая коллекция Anki.
-        host_key: валидный hostKey пользователя.
-        endpoint: URL конкретного sync-сервера (``sync20.ankiweb.net`` и т.п.).
-            Получается из предыдущего sync-запроса; ``None`` — default.
+        col: open Anki collection.
+        host_key: valid user hostKey.
+        endpoint: URL of a specific sync server (``sync20.ankiweb.net`` etc.).
+            Obtained from the previous sync request; ``None`` — default.
 
     Raises:
-        AuthExpiredError: если hostKey отвергнут.
-        SyncError: на прочих сбоях.
+        AuthExpiredError: if the hostKey was rejected.
+        SyncError: on other failures.
     """
 
     auth = make_auth(host_key, endpoint)
@@ -66,15 +66,15 @@ def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) ->
 
     if not status.required:
         logger.info("Sync is not required, collection is up to date")
-        # AnkiDroid: ``withCol { _loadScheduler() }`` после NO_CHANGES —
-        # версия планировщика могла измениться на сервере.
+        # AnkiDroid: ``withCol { _loadScheduler() }`` after NO_CHANGES —
+        # the scheduler version may have changed on the server.
         col._load_scheduler()
         return SyncResult(required=False, new_endpoint=status.new_endpoint or None)
 
     logger.info("Starting collection sync with AnkiWeb")
     try:
-        # ``sync_media=False`` — AnkiDroid делает то же самое, медиа
-        # синхронизируется отдельным вызовом ``SyncMediaWorker.start()``.
+        # ``sync_media=False`` — AnkiDroid does the same; media is
+        # synced separately via ``SyncMediaWorker.start()``.
         result = col.sync_collection(auth=auth, sync_media=False)
     except BackendError as exc:
         if _is_auth_error(exc):
@@ -97,22 +97,22 @@ def full_download(
     host_key: str,
     endpoint: str | None = None,
 ) -> SyncResult:
-    """Полностью скачивает коллекцию с AnkiWeb.
+    """Fully downloads the collection from AnkiWeb.
 
-    Используется, когда локальная коллекция пустая (первый запуск),
-    а ``sync_collection`` молча завершается без скачивания.
+    Used when the local collection is empty (first run) and
+    ``sync_collection`` silently finishes without downloading anything.
 
     Args:
-        col: открытая (пустая) коллекция Anki.
-        host_key: валидный hostKey пользователя.
-        endpoint: URL конкретного sync-сервера (см. ``perform_sync``).
-            **Критически важно**: AnkiWeb возвращает ``new_endpoint`` при
-            первом sync — если его проигнорировать, download пойдёт на
-            неправильный сервер и вернёт ``HttpError: missing original size``.
+        col: open (empty) Anki collection.
+        host_key: valid user hostKey.
+        endpoint: URL of a specific sync server (see ``perform_sync``).
+            **Critically important**: AnkiWeb returns ``new_endpoint`` on
+            the first sync — if you ignore it, the download will go to
+            the wrong server and return ``HttpError: missing original size``.
 
     Raises:
-        AuthExpiredError: если hostKey отвергнут.
-        SyncError: на прочих сбоях.
+        AuthExpiredError: if the hostKey was rejected.
+        SyncError: on other failures.
     """
 
     auth = make_auth(host_key, endpoint)
@@ -121,15 +121,15 @@ def full_download(
         endpoint or "default",
     )
 
-    # Референс AnkiDroid (``Sync.kt:handleDownload``):
-    #   close(downgrade = false, forFullSync = true)   <-- НЕ закрывает Rust-бэкенд
+    # AnkiDroid reference (``Sync.kt:handleDownload``):
+    #   close(downgrade = false, forFullSync = true)   <-- does NOT close the Rust backend
     #   fullUploadOrDownload(auth, upload = false, serverUsn = mediaUsn)
-    #   reopen(afterFullSync = true)                   <-- в finally
+    #   reopen(afterFullSync = true)                   <-- in finally
     #
-    # В Python ``Collection.close()`` всегда вызывает ``close_collection``
-    # на Rust-стороне (нет флага ``forFullSync``). Эмулируем поведение
-    # AnkiDroid вручную: обнуляем Python-обёртку ``col.db = None`` через
-    # ``close_for_full_sync()``, не закрывая бэкенд.
+    # In Python ``Collection.close()`` always calls ``close_collection``
+    # on the Rust side (no ``forFullSync`` flag). We emulate AnkiDroid's
+    # behaviour manually: drop the Python wrapper ``col.db = None`` via
+    # ``close_for_full_sync()`` without closing the backend.
     col.close_for_full_sync()
 
     try:
@@ -166,7 +166,7 @@ def try_sync(
     host_key: str,
     endpoint: str | None = None,
 ) -> SyncResult:
-    """Best-effort sync: возвращает ``SyncResult.error`` вместо исключений."""
+    """Best-effort sync: returns ``SyncResult.error`` instead of raising."""
 
     try:
         return perform_sync(col, host_key, endpoint)
@@ -187,7 +187,7 @@ def try_sync(
 
 
 def _is_auth_error(exc: BackendError) -> bool:
-    """True, если BackendError сигнализирует о протухшем hostKey."""
+    """True if the BackendError indicates an expired hostKey."""
 
     message = str(exc).lower()
     markers = (

@@ -1,3 +1,3 @@
-"""kindlanki — Anki-клиент для Amazon Kindle."""
+"""kindlanki — Anki client for Amazon Kindle."""
 
 __version__ = "0.1.0"

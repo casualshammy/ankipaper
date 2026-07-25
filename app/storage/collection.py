@@ -1,12 +1,12 @@
-"""Единая точка доступа к локальной коллекции Anki.
+"""Single point of access to the local Anki collection.
 
-Коллекция открывается лениво при первом обращении. Все операции
-выполняются в thread-pool через ``asyncio.to_thread``, чтобы не
-блокировать event loop FastAPI.
+The collection is opened lazily on first access. All operations are run
+in a thread pool via ``asyncio.to_thread`` so that the FastAPI event
+loop is not blocked.
 
-С версией с поддержкой нескольких аккаунтов (``app/storage/account.py``)
-менеджер создаётся per-account: каждый инстанс привязан к конкретному
-пути ``<account_dir>/collection.anki21``.
+In the multi-account version (``app/storage/account.py``) the manager
+is per-account: each instance is bound to a specific
+``<account_dir>/collection.anki21`` path.
 """
 
 from __future__ import annotations
@@ -26,13 +26,13 @@ MEDIA_DIR_NAME = "collection.media"
 
 
 class CollectionManager:
-    """Менеджер локальной коллекции Anki для одного аккаунта."""
+    """Manager of the local Anki collection for a single account."""
 
     def __init__(self, collection_path: Path) -> None:
-        """Создаёт менеджер для коллекции по указанному пути.
+        """Creates a manager for the collection at the given path.
 
         Args:
-            collection_path: путь к ``collection.anki21`` (не к каталогу).
+            collection_path: path to ``collection.anki21`` (not to the directory).
         """
 
         self._lock = asyncio.Lock()
@@ -41,22 +41,22 @@ class CollectionManager:
 
     @property
     def collection_path(self) -> Path:
-        """Путь к файлу коллекции."""
+        """Path to the collection file."""
 
         return self._path
 
     def has_collection(self) -> bool:
-        """True, если файл коллекции существует на диске."""
+        """True if the collection file exists on disk."""
 
         return self._path.exists()
 
     def is_open(self) -> bool:
-        """True, если коллекция сейчас открыта в памяти."""
+        """True if the collection is currently open in memory."""
 
         return self._collection is not None
 
     def media_dir(self) -> Path:
-        """Путь к директории медиа (сиблинг ``collection.media``)."""
+        """Path to the media directory (sibling of ``collection.media``)."""
 
         return self._path.with_name(MEDIA_DIR_NAME)
 
@@ -66,15 +66,15 @@ class CollectionManager:
         *args: Any,
         **kwargs: Any,
     ) -> T:
-        """Выполняет синхронную функцию ``fn`` с открытой коллекцией.
+        """Runs the synchronous function ``fn`` with the collection open.
 
-        Открывает коллекцию при необходимости, гарантирует последовательный
-        доступ через ``asyncio.Lock``, выполняет вызов в thread-pool.
+        Opens the collection if needed, guarantees serial access via
+        ``asyncio.Lock``, and runs the call in a thread pool.
 
         Args:
-            fn: функция ``(collection, *args, **kwargs) -> T``.
-            *args: позиционные аргументы для ``fn``.
-            **kwargs: именованные аргументы для ``fn``.
+            fn: function ``(collection, *args, **kwargs) -> T``.
+            *args: positional arguments for ``fn``.
+            **kwargs: keyword arguments for ``fn``.
         """
 
         async with self._lock:
@@ -83,7 +83,7 @@ class CollectionManager:
             return await asyncio.to_thread(fn, self._collection, *args, **kwargs)
 
     async def close(self) -> None:
-        """Закрывает коллекцию, если она открыта."""
+        """Closes the collection if it is open."""
 
         async with self._lock:
             if self._collection is not None:
@@ -94,7 +94,7 @@ class CollectionManager:
                 self._collection = None
 
     def _ensure_open(self) -> None:
-        """Открывает коллекцию, если она ещё не открыта."""
+        """Opens the collection if it is not already open."""
 
         if self._collection is not None:
             return

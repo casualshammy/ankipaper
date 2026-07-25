@@ -1,7 +1,7 @@
-"""Состояние фоновой синхронизации медиа с AnkiWeb.
+"""State of the background media sync with AnkiWeb.
 
-Вынесено в отдельный модуль, чтобы ``Account`` (``app/storage/account.py``)
-мог держать per-account инстанс без циклического импорта с роутами.
+Lives in a separate module so that ``Account`` (``app/storage/account.py``)
+can hold a per-account instance without circular imports with the routes.
 """
 
 from __future__ import annotations
@@ -13,10 +13,10 @@ from typing import Any
 
 @dataclass
 class SyncState:
-    """Состояние текущей/последней синхронизации с AnkiWeb.
+    """State of the current/last sync with AnkiWeb.
 
-    Обновляется фоновым таском, читается JSON-эндпоинтом для
-    отображения прогресс-бара на Kindle.
+    Updated by the background task, read by the JSON endpoint to display
+    a progress bar on Kindle.
     """
 
     status: str = "idle"  # "idle" | "running" | "done" | "error"
@@ -29,7 +29,7 @@ class SyncState:
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Возвращает словарь для JSON-сериализации."""
+        """Returns a dict ready for JSON serialisation."""
 
         d = asdict(self)
         d["elapsed"] = (

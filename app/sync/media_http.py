@@ -1,23 +1,22 @@
-"""Прямая синхронизация медиа-файлов с AnkiWeb через HTTP.
+"""Direct media file synchronisation with AnkiWeb via HTTP.
 
-Обходит Rust-бэкенд ``col.sync_media``, который в нашей среде падает
-с ``BackendIOError: Failed to create file in '<col>': File exists``.
-Реализует протокол media sync v3 (zstd + JSON) напрямую через HTTP,
-по референсу ``_anki_repo/rslib/src/sync/http_server/handlers.rs``
-и ``_anki_repo/rslib/src/sync/http_client/protocol.rs``.
+Bypasses the Rust backend ``col.sync_media``, which in our environment
+fails with ``BackendIOError: Failed to create file in '<col>': File exists``.
+Implements the media sync v3 protocol (zstd + JSON) directly via HTTP,
+following the reference ``_anki_repo/rslib/src/sync/http_server/handlers.rs``
+and ``_anki_repo/rslib/src/sync/http_client/protocol.rs``.
 
-Эндпоинты (sync v11, zstd):
-- ``POST {endpoint}/msync/begin``         — получить server_usn
-- ``POST {endpoint}/msync/mediaChanges`` — список изменений (camelCase JSON)
-- ``POST {endpoint}/msync/downloadFiles`` — скачать zip с файлами
+Endpoints (sync v11, zstd):
+- ``POST {endpoint}/msync/begin``         — get server_usn
+- ``POST {endpoint}/msync/mediaChanges`` — list of changes (camelCase JSON)
+- ``POST {endpoint}/msync/downloadFiles`` — download a zip of files
 
-Заголовок: ``Anki-Sync: {"v": 11, "k": <hostkey>, "c": <client_ver>, "s": <session>}``
-Body: zstd-сжатый JSON.
-Ответ: zstd-сжатый, с заголовком ``Anki-Original-Size``.
+Header: ``Anki-Sync: {"v": 11, "k": <hostkey>, "c": <client_ver>, "s": <session>}``
+Body: zstd-compressed JSON.
+Response: zstd-compressed, with the ``Anki-Original-Size`` header.
 
-Важно: на все запросы в рамках одной ``sync_media_direct`` сессии
-используется **один и тот же** ``session_key`` — AnkiWeb использует его
-для отслеживания сессии.
+Important: all requests within a single ``sync_media_direct`` session
+use the **same** ``session_key`` — AnkiWeb uses it to track the session.
 """
 
 from __future__ import annotations
@@ -44,40 +43,40 @@ ORIGINAL_SIZE_HEADER = "anki-original-size"
 SYNC_HEADER_NAME = "anki-sync"
 USER_AGENT = "kindlanki/0.1"
 
-# Расширения изображений, которые имеет смысл показывать на e-ink Kindle.
-# Аудио, видео, шрифты и прочее отфильтровываем — они не отображаются
-# на Kindle и только занимают место на диске.
+# Image extensions worth showing on an e-ink Kindle.
+# Audio, video, fonts, etc. are filtered out — they are not rendered on
+# Kindle and only waste disk space.
 IMAGE_EXTENSIONS: frozenset[str] = frozenset(
     {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 )
 
 
 def _endpoint(value: str | None) -> str:
-    """Возвращает sync-endpoint (``sync20.ankiweb.net`` и т.п.)."""
+    """Returns the sync endpoint (``sync20.ankiweb.net`` etc.)."""
 
     return (value or DEFAULT_ENDPOINT).rstrip("/") + "/"
 
 
 def _compress(data: bytes) -> bytes:
-    """Сжимает ``data`` через zstd (формат, совместимый с сервером AnkiWeb)."""
+    """Compresses ``data`` with zstd (format compatible with the AnkiWeb server)."""
 
     cctx = zstd.ZstdCompressor()
     return cctx.compress(data)
 
 
 def _decompress(data: bytes) -> bytes:
-    """Распаковывает zstd-данные от сервера AnkiWeb."""
+    """Decompresses zstd data from the AnkiWeb server."""
 
     dctx = zstd.ZstdDecompressor()
     return dctx.decompress(data, max_output_size=512 * 1024 * 1024)
 
 
 def _make_session_key() -> str:
-    """Генерирует псевдо-случайный session_key (формат как у AnkiDroid).
+    """Generates a pseudo-random session_key (format like AnkiDroid).
 
-    AnkiDroid использует ``rand::random::<u32>`` плюс base-N кодирование
-    (см. ``_anki_repo/rslib/src/sync/http_client/mod.rs:109-113``).
-    Здесь — простой аналог: 16 случайных ASCII-символов.
+    AnkiDroid uses ``rand::random::<u32>`` plus base-N encoding
+    (see ``_anki_repo/rslib/src/sync/http_client/mod.rs:109-113``).
+    Here is a simple analogue: 16 random ASCII characters.
     """
 
     alphabet = string.ascii_letters + string.digits
@@ -91,26 +90,26 @@ def _post_json(
     payload: dict | list,
     session_key: str,
 ) -> bytes:
-    """POST ``method`` на ``endpoint`` с zstd-сжатым JSON-payload.
+    """POSTs ``method`` to ``endpoint`` with a zstd-compressed JSON payload.
 
     Args:
-        endpoint: базовый URL (например, ``https://sync20.ankiweb.net/``).
-        method: имя метода (``begin``, ``mediaChanges``, ``downloadFiles``).
-        host_key: hostKey пользователя.
-        payload: данные, сериализуемые в JSON.
-        session_key: единый session_key на всю media-sync сессию.
+        endpoint: base URL (e.g. ``https://sync20.ankiweb.net/``).
+        method: method name (``begin``, ``mediaChanges``, ``downloadFiles``).
+        host_key: user hostKey.
+        payload: data serialisable as JSON.
+        session_key: single session_key shared by the entire media-sync session.
 
     Returns:
-        Сырое (zstd-сжатое) тело ответа. Используйте ``_decode_response``
-        для распаковки и проверки ошибок.
+        Raw (zstd-compressed) response body. Use ``_decode_response`` to
+        decompress and check for errors.
 
     Raises:
-        SyncHttpError: при сетевой ошибке или HTTP 4xx/5xx.
+        SyncHttpError: on a network error or HTTP 4xx/5xx.
     """
 
-    # Media sync живёт на ``/msync/*`` (см.
+    # Media sync lives under ``/msync/*`` (see
     # ``_anki_repo/rslib/src/sync/http_server/mod.rs:248-249``),
-    # коллекция — на ``/sync/*``.
+    # the collection lives under ``/sync/*``.
     url = urllib.parse.urljoin(endpoint, f"msync/{method}")
     body = _compress(json.dumps(payload).encode("utf-8"))
     header = {
@@ -155,33 +154,33 @@ def _post_json(
 
 
 def _decode_response(raw: bytes) -> dict | list | bytes:
-    """Декодирует zstd-ответ от сервера, проверяет обёртку ``JsonResult``.
+    """Decodes a zstd response from the server and checks the ``JsonResult`` wrapper.
 
-    Media-sync (``/msync/*``) оборачивает JSON-ответы в ``JsonResult`` —
-    ``untagged`` enum: ``{"data": <T>, "err": ""}`` (Ok) или
-    ``{"err": "..."}`` (Err). ``downloadFiles`` возвращает сырой zip.
+    Media-sync (``/msync/*``) wraps JSON responses in a ``JsonResult`` —
+    an ``untagged`` enum: ``{"data": <T>, "err": ""}`` (Ok) or
+    ``{"err": "..."}`` (Err). ``downloadFiles`` returns a raw zip.
 
     Args:
-        raw: zstd-сжатое тело ответа.
+        raw: zstd-compressed response body.
 
     Returns:
-        Декодированный JSON-объект (для media sync) или сырые байты
-        (для downloadFiles).
+        Decoded JSON object (for media sync) or raw bytes (for
+        downloadFiles).
     """
 
     try:
         decompressed = _decompress(raw)
     except zstd.ZstdError:
-        # Не zstd — возможно, уже распаковано или не zstd вообще.
+        # Not zstd — maybe already decompressed, or not zstd at all.
         return raw
 
     try:
         wrapper = json.loads(decompressed)
     except json.JSONDecodeError:
-        # Не JSON — это zip (downloadFiles) или другой бинарь.
+        # Not JSON — this is a zip (downloadFiles) or another binary.
         return raw
 
-    # ``JsonResult`` (см. ``_anki_repo/rslib/src/sync/media/protocol.rs:71-80``):
+    # ``JsonResult`` (see ``_anki_repo/rslib/src/sync/media/protocol.rs:71-80``):
     #   - Ok:   ``{"data": <T>, "err": ""}``
     #   - Err:  ``{"err": "..."}``
     if isinstance(wrapper, dict):
@@ -193,22 +192,22 @@ def _decode_response(raw: bytes) -> dict | list | bytes:
 
 
 class SyncHttpError(RuntimeError):
-    """Сбой HTTP-запроса к AnkiWeb sync-эндпоинту."""
+    """Failure of an HTTP request to an AnkiWeb sync endpoint."""
 
 
 def _media_dir(data_dir: Path) -> Path:
-    """Возвращает путь к директории медиа-файлов коллекции."""
+    """Returns the path to the media files directory of the collection."""
 
     return data_dir / "collection.media"
 
 
 def _is_image(fname: str) -> bool:
-    """True, если ``fname`` имеет расширение изображения.
+    """True if ``fname`` has an image extension.
 
-    Проверка case-insensitive; смотрим на **последнее** расширение,
-    чтобы ``foo.tar.gz`` отсеять как ``.gz`` (не изображение), а
-    ``image.JPG.bak`` — как ``.bak``. AnkiWeb всегда хранит имена в NFC
-    и с одним расширением, так что в реальности это простая проверка.
+    Check is case-insensitive; we look at the **last** suffix, so
+    ``foo.tar.gz`` is filtered out as ``.gz`` (not an image), and
+    ``image.JPG.bak`` as ``.bak``. AnkiWeb always stores names in NFC
+    with a single extension, so in practice this is a simple check.
     """
 
     suffix = Path(fname).suffix.lower()
@@ -216,19 +215,19 @@ def _is_image(fname: str) -> bool:
 
 
 def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
-    """Распаковывает zip с медиа в ``target_dir``.
+    """Extracts a media zip into ``target_dir``.
 
-    Формат zip (см. ``_anki_repo/rslib/src/sync/media/zip.rs:29-48``):
-    - файлы названы по индексу в виде строки: ``"0"``, ``"1"``, ...;
-    - в zip есть ``_meta`` — JSON-словарь ``{idx_str: real_name}``,
-      где ``real_name`` — настоящее имя файла.
+    Zip format (see ``_anki_repo/rslib/src/sync/media/zip.rs:29-48``):
+    - files are named by index as a string: ``"0"``, ``"1"``, ...;
+    - the zip contains ``_meta`` — a JSON dict ``{idx_str: real_name}``
+      where ``real_name`` is the actual file name.
 
     Args:
-        zip_bytes: содержимое zip от сервера.
-        target_dir: куда распаковать (например, ``/data/collection.media``).
+        zip_bytes: zip contents from the server.
+        target_dir: where to extract (e.g. ``/data/collection.media``).
 
     Returns:
-        Список распакованных имён файлов.
+        List of extracted file names.
     """
 
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -244,7 +243,7 @@ def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
             if info.filename == "_meta" or info.is_dir():
                 continue
             real_name = meta.get(info.filename, info.filename)
-            # Sanitize: не даём уйти из target_dir через «..».
+            # Sanitize: do not let ``..`` escape target_dir.
             if ".." in Path(real_name).parts:
                 logger.warning("Skipping suspicious media filename: %s", real_name)
                 continue
@@ -267,37 +266,36 @@ def sync_media_direct(
     image_only: bool = True,
     progress_callback=None,
 ) -> dict:
-    """Качает media-файлы с AnkiWeb и сохраняет в ``data_dir/collection.media``.
+    """Downloads media files from AnkiWeb and saves them to ``data_dir/collection.media``.
 
     Args:
-        host_key: валидный hostKey пользователя.
-        endpoint: URL sync-сервера (``sync20.ankiweb.net`` и т.п.) или
-            ``None`` для default.
-        data_dir: каталог с ``collection.anki21``; сюда же пишется
-            ``collection.media/``.
-        last_usn_path: путь к файлу, где хранится последний
-            обработанный ``server_usn`` (используется для incremental
-            sync на следующий раз).
-        batch_limit: макс. файлов за один ``downloadFiles``.
-        image_only: если True (по умолчанию), скачивать только файлы с
-            расширениями ``.jpg``, ``.jpeg``, ``.png``, ``.gif``, ``.webp``.
-            Аудио, видео, шрифты и прочее пропускаются — они не
-            отображаются на e-ink Kindle.
-        progress_callback: опциональный колбэк ``(phase, current, total,
-            downloaded) -> None``. ``phase`` — ``"mediaChanges"`` или
-            ``"downloadFiles"``; ``current``/``total`` — прогресс в
-            текущей фазе; ``downloaded`` — сколько файлов уже скачано.
-            Используется для отображения прогресс-бара в UI.
+        host_key: valid user hostKey.
+        endpoint: sync server URL (``sync20.ankiweb.net`` etc.) or
+            ``None`` for default.
+        data_dir: directory containing ``collection.anki21``; the
+            ``collection.media/`` directory is also written here.
+        last_usn_path: path to the file storing the last processed
+            ``server_usn`` (used for the next incremental sync).
+        batch_limit: max files per ``downloadFiles`` request.
+        image_only: if True (default), only download files with extensions
+            ``.jpg``, ``.jpeg``, ``.png``, ``.gif``, ``.webp``. Audio,
+            video, fonts, etc. are skipped — they are not rendered on
+            e-ink Kindle.
+        progress_callback: optional callback ``(phase, current, total,
+            downloaded) -> None``. ``phase`` is ``"mediaChanges"`` or
+            ``"downloadFiles"``; ``current``/``total`` is the progress in
+            the current phase; ``downloaded`` is how many files have
+            already been downloaded. Used for the progress bar in the UI.
 
     Returns:
-        Словарь с результатом: ``{"downloaded": N, "total": N,
+        Dict with the result: ``{"downloaded": N, "total": N,
         "skipped": N, "last_usn": N, "endpoint": "..."}``.
     """
 
     base = _endpoint(endpoint)
     media_dir = _media_dir(data_dir)
-    # Один session_key на всю сессию — AnkiWeb отслеживает состояние
-    # по нему. См. ``_anki_repo/rslib/src/sync/http_client/mod.rs:41``.
+    # A single session_key for the whole session — AnkiWeb tracks state
+    # by it. See ``_anki_repo/rslib/src/sync/http_client/mod.rs:41``.
     session_key = _make_session_key()
 
     logger.info("Media sync (direct HTTP): endpoint=%s", base)
@@ -310,11 +308,11 @@ def sync_media_direct(
     server_usn = int(begin["usn"])
     logger.info("Media sync: server_usn=%s", server_usn)
 
-    # 2. mediaChanges (incremental). Сервер возвращает до 1000 файлов за
-    #    раз, начиная с ``usn > after_usn`` (см.
+    # 2. mediaChanges (incremental). The server returns up to 1000 files
+    #    per call, starting with ``usn > after_usn`` (see
     #    ``_anki_repo/rslib/src/sync/media/database/server/entry/changes.sql``).
-    #    ``MediaChange`` сериализуется через ``#[derive(Serialize_tuple)]`` —
-    #    это массив ``[fname, usn, sha1]``, а не объект.
+    #    ``MediaChange`` is serialised via ``#[derive(Serialize_tuple)]`` —
+    #    it's an array ``[fname, usn, sha1]``, not an object.
     last_usn = 0
     if last_usn_path.exists():
         try:
@@ -344,7 +342,7 @@ def sync_media_direct(
                 skipped_non_image += 1
                 continue
             all_files.append((fname, sha1))
-        # ``usn`` последней записи — это next ``last_usn`` для пагинации.
+        # The ``usn`` of the last entry is the next ``last_usn`` for pagination.
         last_usn = int(changes[-1][1])
         logger.info(
             "Media sync: %d entries in this batch, next last_usn=%d (total so far: %d)",
@@ -353,9 +351,10 @@ def sync_media_direct(
             len(all_files),
         )
         if progress_callback is not None:
-            # На этом этапе ``total`` ещё неизвестен (будет = ``len(all_files)``
-            # после последнего батча). Сообщаем прогресс относительно
-            # уже увиденного; UI прибавит индикатор "неопределено".
+            # At this stage ``total`` is not yet known (it will be
+            # ``len(all_files)`` after the last batch). Report progress
+            # relative to what we've already seen; the UI will show an
+            # indeterminate indicator.
             try:
                 progress_callback(
                     "mediaChanges",
@@ -366,11 +365,11 @@ def sync_media_direct(
             except Exception:  # noqa: BLE001
                 logger.exception("progress_callback raised during mediaChanges")
         if len(changes) < 1000:
-            # Меньше лимита — последний батч.
+            # Less than the limit — this was the last batch.
             break
 
-    # Полное количество файлов теперь известно — сообщаем финальное
-    # значение ``total`` для фазы downloadFiles.
+    # The total number of files is now known — report the final ``total``
+    # value for the downloadFiles phase.
     if progress_callback is not None:
         try:
             progress_callback(
@@ -382,8 +381,8 @@ def sync_media_direct(
         except Exception:  # noqa: BLE001
             logger.exception("progress_callback raised at mediaChanges end")
 
-    # 3. downloadFiles — пачками по batch_limit. Сервер возвращает zip
-    #    с распакованными файлами.
+    # 3. downloadFiles — in batches of batch_limit. The server returns a
+    #    zip with the extracted files.
     downloaded: list[str] = []
     total_files = len(all_files)
     for i in range(0, total_files, batch_limit):
@@ -397,7 +396,7 @@ def sync_media_direct(
             len(all_files),
             batch[:3],
         )
-        # Логируем полный payload первого запроса для отладки 400.
+        # Log the full payload of the first request for 400 debugging.
         if i == 0:
             try:
                 debug_payload = json.dumps({"files": batch})[:500]
@@ -407,7 +406,7 @@ def sync_media_direct(
         raw = _post_json(
             base, "downloadFiles", host_key, {"files": batch}, session_key
         )
-        # Сервер оборачивает zip в zstd, как и остальные ответы.
+        # The server wraps the zip in zstd, like the other responses.
         if raw[:4] == b"\x28\xb5\x2f\xfd":  # zstd magic number
             zip_bytes = _decompress(raw)
         else:
@@ -425,7 +424,7 @@ def sync_media_direct(
             except Exception:  # noqa: BLE001
                 logger.exception("progress_callback raised during downloadFiles")
 
-    # Сохраняем last_usn для следующего incremental sync.
+    # Save last_usn for the next incremental sync.
     last_usn_path.parent.mkdir(parents=True, exist_ok=True)
     last_usn_path.write_text(str(server_usn))
 

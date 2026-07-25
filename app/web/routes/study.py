@@ -1,4 +1,4 @@
-"""Роуты ревью карточек."""
+"""Card review routes."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ async def _session_done(
     account: Account,
     deck_id: int,
 ) -> HTMLResponse:
-    """Отображает страницу завершения сессии с авто-sync."""
+    """Renders the session-complete page with an auto-sync."""
 
     synced, sync_err, attempted = await _auto_sync_if_possible(account)
     templates: Jinja2Templates = request.app.state.templates
@@ -54,7 +54,7 @@ async def _session_done(
 
 
 async def _auto_sync_if_possible(account: Account) -> tuple[bool, str | None, bool]:
-    """Best-effort sync после завершения сессии ревью."""
+    """Best-effort sync after the review session is finished."""
 
     host_key = account.host_key()
     if not host_key:
@@ -70,7 +70,7 @@ async def study_get(
     deck_id: int,
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
-    """Показывает front следующей due-карточки или страницу завершения."""
+    """Shows the front of the next due card or the session-complete page."""
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
@@ -113,7 +113,7 @@ async def study_post(
     easy_interval: str = Form(""),
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
-    """Обрабатывает Reveal / Answer в рамках сессии ревью."""
+    """Handles Reveal / Answer within a review session."""
 
     if account is None:
         return RedirectResponse("/login", status_code=303)

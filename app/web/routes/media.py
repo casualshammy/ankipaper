@@ -1,9 +1,8 @@
-"""Роут для раздачи медиа-файлов коллекции Anki.
+"""Route for serving media files of the Anki collection.
 
-Anki встраивает в HTML карточки ссылки на медиа-файлы через
-``src="filename"`` (relative). После переписывания в ``/ms/<filename>``
-этот роут отдаёт файлы из директории ``collection.media/`` аккаунта,
-к которому привязан cookie.
+Anki embeds media file links in card HTML as relative ``src="filename"``.
+After rewriting to ``/ms/`` this route serves files from the
+``collection.media/`` directory of the account bound to the cookie.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ router = APIRouter()
 
 
 def _media_dir(account: Account) -> Path:
-    """Возвращает путь к директории медиа-файлов аккаунта."""
+    """Returns the path to the media files directory of the account."""
 
     return account.media_dir()
 
@@ -33,15 +32,14 @@ async def serve_media(
     filename: str,
     account: Account = Depends(get_current_account),
 ) -> FileResponse:
-    """Отдаёт медиа-файл из ``collection.media/`` текущего аккаунта.
+    """Serves a media file from ``collection.media/`` of the current account.
 
     Args:
-        filename: относительный путь внутри ``collection.media/``
-            (например, ``myimage.jpg``).
-        account: текущий аккаунт (из cookie).
+        filename: relative path inside ``collection.media/`` (e.g. ``myimage.jpg``).
+        account: current account (from the cookie).
 
     Raises:
-        HTTPException: 404, если файла нет или путь содержит ``..``.
+        HTTPException: 404 if the file is missing, 400 if the path contains ``..``.
     """
 
     if ".." in filename.split("/") or filename.startswith("/"):
@@ -50,7 +48,7 @@ async def serve_media(
     media_root = _media_dir(account)
     file_path = (media_root / filename).resolve()
 
-    # Защита от path traversal: file_path должен остаться внутри media_root.
+    # Path-traversal protection: file_path must remain inside media_root.
     try:
         file_path.relative_to(media_root.resolve())
     except ValueError as exc:

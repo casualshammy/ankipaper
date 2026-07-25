@@ -1,6 +1,6 @@
-/* kindlanki — стили под e-ink Kindle (32 градации серого, без JS).
-   Палитра: чёрный, белый и 7 оттенков серого. Без цвета, без градиентов,
-   без border-radius (Kindle плохо их рендерит), без теней. */
+/* kindlanki — styles for e-ink Kindle (32 shades of grey, no JS).
+   Palette: black, white and 7 shades of grey. No colour, no gradients,
+   no border-radius (Kindle renders them poorly), no shadows. */
 
 * { box-sizing: border-box; }
 
@@ -84,7 +84,7 @@ p {
 /* Forms ---------------------------------------------------------------- */
 .form { margin: 16px 0; }
 
-/* Внутри ``.actions-split`` обнуляем дефолтные отступы формы. */
+/* Inside ``.actions-split`` we zero out the form's default margins. */
 .form.form-inline { margin: 0; }
 
 .field {
@@ -117,8 +117,8 @@ input[type="password"] {
 
 .actions-row { margin: 16px 0; }
 
-/* Разделённые действия (например, "Back to decks" слева и "Show answer"
-   справа на одной строке на странице ревью). */
+/* Split actions (for example, "Back to decks" on the left and "Show answer"
+   on the right on the same row on the review page). */
 .actions-split {
   display: flex;
   justify-content: space-between;
@@ -195,10 +195,11 @@ table.decks .actions-col {
 }
 
 /* Card view ------------------------------------------------------------ */
-/* Anki встраивает свой ``<style>`` прямо в HTML карточки (``notetype.css`` +
-   ``cloze_styling.css``). Этот блок отвечает только за то, что Anki не
-   покрывает: рамку, поведение битых картинок и обязательный override для
-   cloze, который Anki рисует синим (``color: blue`` — невидимо на e-ink). */
+/* Anki embeds its own ``<style>`` directly in card HTML (``notetype.css`` +
+   ``cloze_styling.css``). This block covers only what Anki doesn't
+   provide: a border, broken-image behaviour and the mandatory cloze
+   override (Anki draws cloze in blue — ``color: blue`` — which is
+   invisible on e-ink). */
 
 .card {
   border: 2px solid #000000;
@@ -212,28 +213,30 @@ table.decks .actions-col {
   height: auto;
 }
 
-/* Сломанные/недоступные картинки не должны съедать место. */
+/* Broken/unavailable images should not take up space. */
 img[src=""],
 img:not([src]) {
   display: none;
 }
 
-/* Cloze: Anki задаёт ``color: blue``, невидимый на e-ink. Перебиваем чёрным
-   с ``!important``, чтобы выиграть против ``color: blue`` без ``!important``
-   из Anki-стиля. Сам формат cloze (c1, c2, скобки) Anki расставляет сам. */
+/* Cloze: Anki sets ``color: blue``, invisible on e-ink. Override to
+   black with ``!important`` so we win against the non-!important
+   ``color: blue`` from Anki's style. Anki itself emits the cloze
+   formatting (c1, c2, brackets). */
 .cloze {
   color: #000000 !important;
   font-weight: bold !important;
 }
 
-/* Anki также рисует неактивные cloze (``cloze-inactive``) более бледными —
-   оставляем их чёрными, но приглушённого веса, чтобы визуально отличать. */
+/* Anki also draws inactive cloze (``cloze-inactive``) in a paler tone —
+   we keep them black but at a muted weight so they are visually
+   distinguishable. */
 .cloze-inactive {
   color: #555555 !important;
   font-weight: normal !important;
 }
 
-/* Anki ссылки внутри карточки — на e-ink они должны быть контрастными. */
+/* Anki links inside a card must be high-contrast on e-ink. */
 .card a {
   color: #000000;
   text-decoration: underline;
@@ -252,7 +255,7 @@ img:not([src]) {
   min-width: 90px;
 }
 
-/* Предпросмотр интервала под кнопкой рейтинга. */
+/* Interval preview under the rating button. */
 .rating-interval {
   display: block;
   font-size: 14px;
@@ -285,8 +288,8 @@ img:not([src]) {
   line-height: 1.2;
 }
 
-/* Подчёркнутый тег текущего типа карточки — на e-ink легче увидеть,
-   к какому типу (new / learn / review) относится текущая карточка. */
+/* Underlined tag for the current card type — on e-ink it's easier to
+   see which type (new / learn / review) the current card belongs to. */
 .tag-current-new,
 .tag-current-learning,
 .tag-current-review {
@@ -310,7 +313,7 @@ img:not([src]) {
 .progressbar-fill {
   height: 100%;
   background: #000000;
-  /* Переход для плавности обновления. */
+  /* Smooth update transition. */
   transition: width 0.3s linear;
 }
 

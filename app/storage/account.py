@@ -1,18 +1,18 @@
-"""Per-account storage: коллекция, hostKey, sync state, медиа.
+"""Per-account storage: collection, hostKey, sync state, media.
 
-Каждому AnkiWeb-аккаунту соответствует каталог ``data/accounts/<id>/``:
+Each AnkiWeb account corresponds to a directory ``data/accounts/<id>/``:
 
     collection.anki21
     hostkey.enc
     media.last_usn
     collection.media/
 
-``<id>`` — это AnkiWeb-username, прошедший минимальную санитизацию
-для использования в качестве имени каталога. Username хранится в
-cookie и используется для отображения в UI.
+``<id>`` is the AnkiWeb username after minimal sanitisation so that
+it can be used as a directory name. The username is stored in the cookie
+and is used for display in the UI.
 
-Файлы уровня инстанса (``session.secret``) живут в корне ``data_dir``
-и не множатся per-account.
+Instance-level files (``session.secret``) live at the root of ``data_dir``
+and are not duplicated per account.
 """
 
 from __future__ import annotations
@@ -35,11 +35,11 @@ _LAST_USN_FILE = "media.last_usn"
 
 
 def sanitize_account_id(username: str) -> str:
-    """Возвращает безопасное имя каталога аккаунта из AnkiWeb-username.
+    """Returns a safe account directory name from an AnkiWeb username.
 
     Raises:
-        ValueError: если username пустой, зарезервированный или содержит
-            недопустимые символы (``/``, ``\\``, NUL).
+        ValueError: if the username is empty, reserved, or contains
+            invalid characters (``/``, ``\\``, NUL).
     """
 
     if not username:
@@ -58,14 +58,14 @@ def sanitize_account_id(username: str) -> str:
 
 @dataclass(slots=True)
 class Account:
-    """Один AnkiWeb-аккаунт: его данные на диске и in-memory состояние.
+    """A single AnkiWeb account: its on-disk data and in-memory state.
 
     Attributes:
-        id: безопасное имя каталога (см. :func:`sanitize_account_id`).
-        username: оригинальное имя пользователя AnkiWeb (для отображения).
-        data_dir: путь к каталогу аккаунта.
+        id: safe directory name (see :func:`sanitize_account_id`).
+        username: original AnkiWeb username (for display).
+        data_dir: path to the account directory.
         manager: per-account ``CollectionManager``.
-        sync_state: per-account состояние media-sync.
+        sync_state: per-account media-sync state.
     """
 
     id: str
@@ -80,17 +80,17 @@ class Account:
         self.sync_state = SyncState()
 
     def host_key(self) -> str | None:
-        """Возвращает расшифрованный hostKey или ``None``."""
+        """Returns the decrypted hostKey, or ``None``."""
 
         return secrets.load_secret_in(self.data_dir, _HOSTKEY_FILE)
 
     def save_host_key(self, host_key: str) -> None:
-        """Шифрует и сохраняет hostKey (mode 0600)."""
+        """Encrypts and saves the hostKey (mode 0600)."""
 
         secrets.save_secret_in(self.data_dir, _HOSTKEY_FILE, host_key)
 
     def delete_host_key(self) -> None:
-        """Удаляет hostKey, если он есть."""
+        """Deletes the hostKey if it exists."""
 
         secrets.delete_secret_in(self.data_dir, _HOSTKEY_FILE)
 
@@ -98,21 +98,21 @@ class Account:
         return self.host_key() is not None
 
     def last_usn_path(self) -> Path:
-        """Путь к файлу ``media.last_usn``."""
+        """Path to the ``media.last_usn`` file."""
 
         return self.data_dir / _LAST_USN_FILE
 
     def media_dir(self) -> Path:
-        """Путь к каталогу медиа (``collection.media/``)."""
+        """Path to the media directory (``collection.media/``)."""
 
         return self.manager.media_dir()
 
 
 class AccountStore:
-    """Реестр аккаунтов в памяти процесса.
+    """In-process account registry.
 
-    Аккаунты лениво создаются при первом обращении (login) и кэшируются.
-    Disk-каталог ``data/accounts/`` создаётся при инстанциировании store.
+    Accounts are lazily created on first access (login) and cached.
+    The ``data/accounts/`` directory is created when the store is instantiated.
     """
 
     def __init__(self) -> None:
@@ -126,7 +126,7 @@ class AccountStore:
         return self._accounts_dir
 
     def get_or_create(self, username: str) -> Account:
-        """Возвращает существующий аккаунт или создаёт новый по username."""
+        """Returns the existing account or creates a new one from the username."""
 
         account_id = sanitize_account_id(username)
         with self._lock:
@@ -146,19 +146,19 @@ class AccountStore:
             return account
 
     def get(self, account_id: str) -> Account | None:
-        """Возвращает уже загруженный аккаунт по ``account_id`` или ``None``."""
+        """Returns the already-loaded account by ``account_id``, or ``None``."""
 
         with self._lock:
             return self._accounts.get(account_id)
 
     def ensure(self, account_id: str) -> Account | None:
-        """Возвращает аккаунт по id, при необходимости загружая с диска.
+        """Returns the account by id, loading it from disk if necessary.
 
         Args:
-            account_id: идентификатор (имя подкаталога в ``accounts/``).
+            account_id: identifier (subdirectory name under ``accounts/``).
 
         Returns:
-            ``Account`` или ``None``, если на диске нет такого каталога.
+            ``Account``, or ``None`` if no such directory exists on disk.
         """
 
         with self._lock:
@@ -185,7 +185,7 @@ _store_lock = threading.Lock()
 
 
 def get_account_store() -> AccountStore:
-    """Возвращает singleton-инстанс :class:`AccountStore`."""
+    """Returns the singleton :class:`AccountStore` instance."""
 
     global _store
     if _store is None:

@@ -1,49 +1,48 @@
 # kindlanki
 
-Anki-клиент для Amazon Kindle. Позволяет авторизоваться в AnkiWeb,
-просматривать колоды со статистикой и проводить ревью карточек через
-встроенный браузер Kindle (без JavaScript, монохромный UI под e-ink).
+Anki client for Amazon Kindle. Lets you sign in to AnkiWeb, browse decks
+with statistics and review cards through the built-in Kindle browser
+(no JavaScript, monochrome UI tuned for e-ink).
 
-## Стек
+## Stack
 
 - Python 3.11+, FastAPI, Jinja2
-- anki 26.x (Rust-бэкенд, нативный формат коллекции Anki)
-- SQLite (нативный формат Anki, через `anki.collection` API)
+- anki 26.x (Rust backend, native Anki collection format)
+- SQLite (native Anki format, accessed via `anki.collection` API)
 - Docker
 
-## Архитектура
+## Architecture
 
-1 процесс FastAPI обслуживает 1 пользователя. Состояние — в файлах
-`/data/*`:
+One FastAPI process serves a single user. State lives in `/data/*`:
 
 ```
 data/
-├── collection.anki21       # SQLite, нативный формат Anki
-├── collection.media/       # медиа-файлы карточек
+├── collection.anki21       # SQLite, native Anki format
+├── collection.media/       # card media files
 ├── hostkey.enc             # Fernet(hostKey), mode 0600
-└── session.secret          # Fernet-ключ, mode 0600
+└── session.secret          # Fernet key, mode 0600
 ```
 
-TLS обеспечивается реверс-прокси (nginx) и не входит в scope проекта.
+TLS is handled by a reverse proxy (nginx) and is out of scope for the project.
 
-## Запуск через Docker
+## Running via Docker
 
 ```bash
 cp .env.example .env
 docker compose -f deploy/compose.yml up -d
 ```
 
-Сервис будет доступен на `http://localhost:8000`. Healthcheck:
+The service will be available at `http://localhost:8000`. Healthcheck:
 `curl http://localhost:8000/healthz`.
 
-## Первый запуск
+## First run
 
-1. Откройте `http://localhost:8000/login`.
-2. Введите логин/пароль AnkiWeb.
-3. После авторизации сервис скачает коллекцию (`full_download`).
-4. Перейдите на `/` — там будет список колод.
+1. Open `http://localhost:8000/login`.
+2. Enter your AnkiWeb login and password.
+3. After authentication the service downloads your collection (`full_download`).
+4. Navigate to `/` to see the list of decks.
 
-## Локальная разработка
+## Local development
 
 ```bash
 python -m venv .venv
@@ -52,19 +51,19 @@ pip install -e .
 uvicorn app.main:app --reload --port 8000
 ```
 
-## Хранение и бэкап
+## Storage and backup
 
-Все данные — в `deploy/data/`. Для бэкапа достаточно скопировать эту
-папку при остановленном контейнере.
+All data lives under `deploy/data/`. To back up, copy that directory while
+the container is stopped.
 
-## Безопасность
+## Security
 
-- `hostKey` хранится зашифрованным Fernet-ключом.
-- Cookie-сессии — HttpOnly, SameSite=Lax, Secure при работе за proxy.
-- HTTPS не настраивается в проекте, только через reverse proxy.
+- The `hostKey` is stored encrypted with a Fernet key.
+- Session cookies are HttpOnly, SameSite=Lax, Secure when running behind a proxy.
+- HTTPS is not configured by the project; it must be terminated by a reverse proxy.
 
-## Ограничения
+## Limitations
 
-- Без JavaScript в шаблонах (Kindle WebKit 1.x не поддерживает).
-- Цветовая схема оптимизирована под 32 градации серого.
-- Один пользователь на инстанс.
+- No JavaScript in templates (Kindle WebKit 1.x does not support it).
+- The colour palette is tuned for 32 shades of grey.
+- One user per instance.

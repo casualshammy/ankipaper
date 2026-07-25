@@ -1,4 +1,4 @@
-"""Пакет storage: работа с локальными коллекциями Anki и секретами."""
+"""Storage package: working with local Anki collections and secrets."""
 
 from app.storage.account import (
     Account,

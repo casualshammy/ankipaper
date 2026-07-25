@@ -1,4 +1,4 @@
-"""Главная страница: список колод со статистикой."""
+"""Home page: list of decks with statistics."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ async def home(
     session: Session = Depends(get_session),
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
-    """Отображает список колод или редиректит на /login."""
+    """Renders the list of decks or redirects to /login."""
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
@@ -71,7 +71,7 @@ async def deck_rebuild_post(
     deck_id: int,
     account: Account | None = Depends(get_current_account_optional),
 ) -> RedirectResponse:
-    """Перестраивает filtered-колоду по её search-термам."""
+    """Rebuilds a filtered deck using its search terms."""
 
     if account is None:
         return RedirectResponse("/login", status_code=303)

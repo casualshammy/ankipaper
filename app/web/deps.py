@@ -9,19 +9,19 @@ from app.web.session import Session, read_session
 
 
 def get_session(request: Request) -> Session:
-    """Dependency, возвращающая текущую сессию пользователя."""
+    """Dependency that returns the current user session."""
 
     return read_session(request)
 
 
 def get_account_store_dep() -> AccountStore:
-    """Dependency, возвращающая singleton :class:`AccountStore`."""
+    """Dependency that returns the singleton :class:`AccountStore`."""
 
     return get_account_store()
 
 
 def _resolve_account(session: Session, store: AccountStore) -> Account | None:
-    """Возвращает текущий аккаунт по cookie или ``None``."""
+    """Returns the current account from the cookie, or ``None``."""
 
     if not session.is_authenticated or not session.account_id:
         return None
@@ -35,11 +35,11 @@ def get_current_account(
     session: Session = Depends(get_session),
     store: AccountStore = Depends(get_account_store_dep),
 ) -> Account:
-    """Возвращает текущий аккаунт по cookie.
+    """Returns the current account from the cookie.
 
     Raises:
-        HTTPException 401: если пользователь не аутентифицирован или
-            аккаунт не найден на диске.
+        HTTPException 401: if the user is not authenticated or the
+            account is not found on disk.
     """
 
     account = _resolve_account(session, store)
@@ -52,9 +52,9 @@ def get_current_account_optional(
     session: Session = Depends(get_session),
     store: AccountStore = Depends(get_account_store_dep),
 ) -> Account | None:
-    """Возвращает текущий аккаунт или ``None``, если не аутентифицирован.
+    """Returns the current account, or ``None`` if not authenticated.
 
-    Используется на страницах, которые сами редиректят на ``/login``.
+    Used on pages that themselves redirect to ``/login``.
     """
 
     return _resolve_account(session, store)

@@ -1,1 +1,1 @@
-"""Пакет статических файлов (CSS)."""
+"""Static files package (CSS)."""
