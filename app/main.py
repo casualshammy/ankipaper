@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -32,11 +33,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     settings = settings or get_settings()
 
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        yield
+        # Close the Redis client used by the login rate limiter so the
+        # connection pool does not leak across worker shutdowns.
+        from app.web.ratelimit import close_redis
+
+        await close_redis()
+
     app = FastAPI(
         title="kindlanki",
         version=__version__,
         docs_url=None,
         redoc_url=None,
+        lifespan=lifespan,
     )
 
     app.state.settings = settings

@@ -20,6 +20,7 @@ dependencies = [
     "cryptography>=42",
     "zstandard>=0.23",
     "anki>=25.6",
+    "redis>=5.0",
 ]
 
 [project.optional-dependencies]

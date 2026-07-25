@@ -12,6 +12,7 @@ from app import __version__
 from app.storage.account import get_account_store
 from app.sync.auth import AuthError, login
 from app.web.deps import get_session
+from app.web.ratelimit import client_ip, get_login_rate_limiter
 from app.web.session import Session, clear_session, write_session
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,44 @@ async def login_post(
     """Accepts login/password, performs authentication, sets the cookie."""
 
     templates: Jinja2Templates = request.app.state.templates
+    ip = client_ip(request)
+    limiter = get_login_rate_limiter()
+
+    # Rate-limit check before forwarding credentials to AnkiWeb. We
+    # always charge the per-IP counter; the per-username counter only
+    # applies once a non-empty username is supplied. Redis is verified
+    # on every request — if it is unreachable we refuse the login
+    # rather than silently disabling brute-force protection.
+    try:
+        error = await limiter.check(ip, username)
+    except RuntimeError as exc:
+        logger.error("Login rate limiter unavailable: %s", exc)
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "version": __version__,
+                "account": None,
+                "reason": None,
+                "error": "Service temporarily unavailable. Please try again later.",
+                "username": username,
+            },
+            status_code=503,
+        )
+    if error is not None:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "version": __version__,
+                "account": None,
+                "reason": None,
+                "error": error,
+                "username": username,
+            },
+            status_code=429,
+        )
+
     try:
         host_key = login(username, password)
     except AuthError as exc:
@@ -68,6 +107,10 @@ async def login_post(
             },
             status_code=401,
         )
+
+    # Successful login — clear the counters so the user does not lock
+    # themselves out by signing in and out repeatedly. Best-effort.
+    await limiter.reset(ip, username)
 
     store = get_account_store()
     account = store.get_or_create(username)

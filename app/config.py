@@ -35,6 +35,32 @@ class Settings(BaseSettings):
         description="True if the application runs behind a reverse proxy (nginx).",
     )
 
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis connection URL used for rate limiting.",
+    )
+
+    login_ip_max_attempts: int = Field(
+        default=5,
+        ge=1,
+        description="Maximum failed login attempts per IP within the IP window.",
+    )
+    login_ip_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        description="Rolling window for the per-IP login rate limit.",
+    )
+    login_user_max_attempts: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum failed login attempts per username within the user window.",
+    )
+    login_user_window_seconds: int = Field(
+        default=3600,
+        ge=1,
+        description="Rolling window for the per-username login rate limit.",
+    )
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Returns the singleton Settings instance for the application."""

@@ -13,11 +13,28 @@ services:
       KINDLANKI_BASE_URL: ${KINDLANKI_BASE_URL:-http://localhost:8000}
       KINDLANKI_COOKIE_MAX_AGE_DAYS: ${KINDLANKI_COOKIE_MAX_AGE_DAYS:-30}
       KINDLANKI_BEHIND_PROXY: ${KINDLANKI_BEHIND_PROXY:-false}
+      KINDLANKI_REDIS_URL: redis://redis:6379/0
     env_file:
       - .env
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    container_name: kindlanki-redis
+    restart: unless-stopped
+    volumes:
+      - ./.data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
