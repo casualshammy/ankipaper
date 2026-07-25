@@ -43,11 +43,16 @@ ORIGINAL_SIZE_HEADER = "anki-original-size"
 SYNC_HEADER_NAME = "anki-sync"
 USER_AGENT = "kindlanki/0.1"
 
-# Image extensions worth showing on an e-ink Kindle.
-# Audio, video, fonts, etc. are filtered out — they are not rendered on
-# Kindle and only waste disk space.
-IMAGE_EXTENSIONS: frozenset[str] = frozenset(
-    {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+# Extensions worth downloading for an e-ink Kindle.
+# - Images: rendered as card media (``<img src="...">``).
+# - Fonts: used by card templates via ``@font-face { src: url(...) }``.
+# Audio, video, JS, etc. are still filtered out — they are not rendered
+# on Kindle and only waste disk space.
+SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".webp",
+        ".otf", ".ttf", ".woff", ".woff2",
+    }
 )
 
 
@@ -201,17 +206,17 @@ def _media_dir(data_dir: Path) -> Path:
     return data_dir / "collection.media"
 
 
-def _is_image(fname: str) -> bool:
-    """True if ``fname`` has an image extension.
+def _is_supported(fname: str) -> bool:
+    """True if ``fname`` has an extension we want to download.
 
     Check is case-insensitive; we look at the **last** suffix, so
-    ``foo.tar.gz`` is filtered out as ``.gz`` (not an image), and
+    ``foo.tar.gz`` is filtered out as ``.gz`` (not supported), and
     ``image.JPG.bak`` as ``.bak``. AnkiWeb always stores names in NFC
     with a single extension, so in practice this is a simple check.
     """
 
     suffix = Path(fname).suffix.lower()
-    return suffix in IMAGE_EXTENSIONS
+    return suffix in SUPPORTED_EXTENSIONS
 
 
 def _extract_zip(zip_bytes: bytes, target_dir: Path) -> list[str]:
@@ -277,10 +282,10 @@ def sync_media_direct(
         last_usn_path: path to the file storing the last processed
             ``server_usn`` (used for the next incremental sync).
         batch_limit: max files per ``downloadFiles`` request.
-        image_only: if True (default), only download files with extensions
-            ``.jpg``, ``.jpeg``, ``.png``, ``.gif``, ``.webp``. Audio,
-            video, fonts, etc. are skipped — they are not rendered on
-            e-ink Kindle.
+        image_only: if True (default), only download files with supported
+            extensions — images (``.jpg``, ``.jpeg``, ``.png``, ``.gif``,
+            ``.webp``) and fonts (``.otf``, ``.ttf``, ``.woff``,
+            ``.woff2``). Audio, video, JS, etc. are skipped.
         progress_callback: optional callback ``(phase, current, total,
             downloaded) -> None``. ``phase`` is ``"mediaChanges"`` or
             ``"downloadFiles"``; ``current``/``total`` is the progress in
@@ -321,7 +326,7 @@ def sync_media_direct(
             last_usn = 0
 
     all_files: list[tuple[str, str]] = []  # (fname, sha1)
-    skipped_non_image = 0
+    skipped_unsupported = 0
     while True:
         raw = _post_json(
             base, "mediaChanges", host_key, {"lastUsn": last_usn}, session_key
@@ -338,8 +343,8 @@ def sync_media_direct(
             fname, _entry_usn, sha1 = c[0], c[1], c[2]
             if not sha1:
                 continue
-            if image_only and not _is_image(fname):
-                skipped_non_image += 1
+            if image_only and not _is_supported(fname):
+                skipped_unsupported += 1
                 continue
             all_files.append((fname, sha1))
         # The ``usn`` of the last entry is the next ``last_usn`` for pagination.
@@ -429,16 +434,16 @@ def sync_media_direct(
     last_usn_path.write_text(str(server_usn))
 
     logger.info(
-        "Media sync complete: %d files downloaded, %d non-image skipped, last_usn=%s",
+        "Media sync complete: %d files downloaded, %d unsupported skipped, last_usn=%s",
         len(downloaded),
-        skipped_non_image,
+        skipped_unsupported,
         server_usn,
     )
 
     return {
         "downloaded": len(downloaded),
         "total": len(all_files),
-        "skipped": skipped_non_image,
+        "skipped": skipped_unsupported,
         "last_usn": server_usn,
         "endpoint": base,
     }
