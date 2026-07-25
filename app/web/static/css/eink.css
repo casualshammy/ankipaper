@@ -178,6 +178,22 @@ table.decks .num {
   font-weight: bold;
 }
 
+table.decks .actions-col {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+
+.deck-action {
+  margin: 0;
+}
+
+.btn-small {
+  padding: 6px 10px;
+  font-size: 16px;
+  min-width: 0;
+}
+
 /* Card view ------------------------------------------------------------ */
 /* Anki встраивает свой ``<style>`` прямо в HTML карточки (``notetype.css`` +
    ``cloze_styling.css``). Этот блок отвечает только за то, что Anki не

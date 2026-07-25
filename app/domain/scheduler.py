@@ -49,6 +49,7 @@ class DeckStats:
     new: int
     learning: int
     review: int
+    is_filtered: bool = False
 
 
 @dataclass(slots=True)
@@ -160,6 +161,7 @@ def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
                 new=new,
                 learning=learning,
                 review=review,
+                is_filtered=bool(col.decks.is_filtered(int(deck.id))),
             )
         )
 
@@ -193,6 +195,24 @@ def get_deck_due_breakdown(
         learning=int(queued.learning_count),
         review=int(queued.review_count),
     )
+
+
+def rebuild_filtered_deck(
+    col: anki.collection.Collection,
+    deck_id: int,
+) -> int:
+    """Пересобирает filtered-колоду по её search-термам.
+
+    Args:
+        col: открытая коллекция.
+        deck_id: id filtered-колоды.
+
+    Returns:
+        Количество карточек, попавших в колоду после rebuild.
+    """
+
+    result = col._backend.rebuild_filtered_deck(int(deck_id))  # type: ignore[attr-defined]
+    return int(result.count)
 
 
 def get_next_card(
