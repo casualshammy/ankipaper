@@ -44,6 +44,10 @@ ORIGINAL_SIZE_HEADER = "anki-original-size"
 SYNC_HEADER_NAME = "anki-sync"
 USER_AGENT = "kindlanki/0.1"
 
+# Streaming chunk size for media extraction. Small enough to keep
+# memory bounded, large enough to keep syscall overhead low.
+_CHUNK_SIZE = 64 * 1024
+
 # Extensions worth downloading for an e-ink Kindle.
 # - Images: rendered as card media (``<img src="...">``).
 # - Fonts: used by card templates via ``@font-face { src: url(...) }``.
@@ -295,11 +299,18 @@ def _extract_zip(
     - the zip contains ``_meta`` — a JSON dict ``{idx_str: real_name}``
       where ``real_name`` is the actual file name.
 
+    The declared size in the zip central directory (``info.file_size``)
+    is **not trusted** for budget enforcement. A crafted zip can lie
+    about the size while delivering a much larger payload. Per-file and
+    collection-wide limits are therefore enforced against actual bytes
+    during the streaming write; the header is only used as an advisory
+    pre-filter, and a mismatch between header and actual size is logged.
+
     Args:
         zip_bytes: zip contents from the server.
         target_dir: where to extract (e.g. ``/data/collection.media``).
-        max_file_bytes: if not None, individual files larger than this are
-            skipped with a warning and counted in ``oversize_count``.
+        max_file_bytes: if not None, individual files larger than this
+            are skipped with a warning and counted in ``oversize_count``.
         remaining_budget: if not None, the remaining bytes available in
             the user's collection before hitting the collection-size
             limit. Files that would exceed it are not written; once the
@@ -326,6 +337,8 @@ def _extract_zip(
             if info.filename == "_meta" or info.is_dir():
                 continue
             real_name = meta.get(info.filename, info.filename)
+            # Advisory pre-filter on the declared size. The header lies —
+            # the real limit is enforced below against actual bytes.
             if max_file_bytes is not None and info.file_size > max_file_bytes:
                 logger.warning(
                     "Skipping oversize media file: %r size=%d > %d",
@@ -334,16 +347,6 @@ def _extract_zip(
                     max_file_bytes,
                 )
                 oversize_count += 1
-                continue
-            if remaining_budget is not None and info.file_size > remaining_budget:
-                logger.warning(
-                    "Media collection size limit reached; skipping %r "
-                    "(file=%d, remaining budget=%d)",
-                    real_name,
-                    info.file_size,
-                    remaining_budget,
-                )
-                hit_collection_limit = True
                 continue
             target = _safe_media_path(real_name, target_dir)
             if target is None:
@@ -354,12 +357,63 @@ def _extract_zip(
                 )
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
+            # Stream the entry so we can enforce limits on actual bytes
+            # and credit ``remaining_budget`` against what was really
+            # written, not what the zip header claims.
+            actual_size = 0
+            size_exceeded = False
+            budget_exceeded = False
             with zf.open(info) as src, target.open("wb") as dst:
-                dst.write(src.read())
+                while True:
+                    chunk = src.read(_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    actual_size += len(chunk)
+                    if max_file_bytes is not None and actual_size > max_file_bytes:
+                        size_exceeded = True
+                        break
+                    if remaining_budget is not None and actual_size > remaining_budget:
+                        budget_exceeded = True
+                        break
+                    dst.write(chunk)
+            if size_exceeded:
+                try:
+                    target.unlink()
+                except FileNotFoundError:
+                    pass
+                logger.warning(
+                    "Media file exceeds max_file_bytes during write: %r actual=%d > %d",
+                    real_name,
+                    actual_size,
+                    max_file_bytes,
+                )
+                oversize_count += 1
+                continue
+            if budget_exceeded:
+                try:
+                    target.unlink()
+                except FileNotFoundError:
+                    pass
+                logger.warning(
+                    "Media collection size limit reached during write: %r "
+                    "actual=%d > remaining=%d",
+                    real_name,
+                    actual_size,
+                    remaining_budget,
+                )
+                hit_collection_limit = True
+                continue
+            if info.file_size and actual_size != info.file_size:
+                logger.warning(
+                    "Media zip entry size mismatch: %r header=%d actual=%d",
+                    real_name,
+                    info.file_size,
+                    actual_size,
+                )
             extracted.append(real_name)
-            bytes_written += info.file_size
+            bytes_written += actual_size
             if remaining_budget is not None:
-                remaining_budget -= info.file_size
+                remaining_budget -= actual_size
 
     return extracted, bytes_written, oversize_count, hit_collection_limit
 
