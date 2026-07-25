@@ -286,47 +286,70 @@ img:not([src]) {
 }
 
 /* Remaining breakdown ------------------------------------------------- */
-.remaining-row {
+.remaining-bar {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0 12px 0;
+  border-bottom: 1px solid #888888;
+  margin-bottom: 16px;
   flex-wrap: wrap;
-  margin: 12px 0 16px 0;
 }
 
-.remaining {
-  margin: 0;
-  font-size: 18px;
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
-.muted-breakdown {
-  margin-left: 8px;
-  display: inline-flex;
+.summary-total {
+  font-size: 24px;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.summary-total-label {
+  font-size: 16px;
+  color: #555555;
+  font-weight: normal;
+  margin-left: 6px;
+}
+
+.breakdown {
+  display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  vertical-align: middle;
 }
 
-.tag {
+.chip {
   display: inline-block;
-  padding: 2px 6px;
-  font-size: 14px;
-  border: 1px solid #000000;
+  padding: 4px 10px;
+  border: 2px solid #000000;
   background: #ffffff;
   color: #000000;
+  font-weight: bold;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
   line-height: 1.2;
 }
 
-/* Underlined tag for the current card type — on e-ink it's easier to
-   see which type (new / learn / review) the current card belongs to. */
-.tag-current-new,
-.tag-current-learning,
-.tag-current-review {
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 2px;
-  font-weight: bold;
+/* Zero-count chips fade into the background so the eye lands on the
+   active types. */
+.chip-empty {
+  border-color: #888888;
+  color: #888888;
+}
+
+/* The chip for the current card type is inverted — a solid black bar
+   with white text — which is far more visible on e-ink than the
+   previous underline. */
+.chip-current {
+  background: #000000;
+  color: #ffffff;
 }
 
 /* Progress bar (sync_progress.html) ---------------------------------- */

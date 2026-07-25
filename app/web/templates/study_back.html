@@ -3,23 +3,25 @@
 {% block title %}Answer — kindlanki{% endblock %}
 
 {% block content %}
-  <div class="remaining-row">
-    <p class="muted remaining">
-      Remaining: <strong>{{ remaining }}</strong>
-      <span class="muted-breakdown">
-        <span class="tag tag-new {{ 'tag-current-new' if card.css_class == 'tag-current-new' else '' }}">new {{ remaining_new }}</span>
-        <span class="tag tag-learning {{ 'tag-current-learning' if card.css_class == 'tag-current-learning' else '' }}">learn {{ remaining_learning }}</span>
-        <span class="tag tag-review {{ 'tag-current-review' if card.css_class == 'tag-current-review' else '' }}">review {{ remaining_review }}</span>
-      </span>
-    </p>
+  <div class="remaining-bar">
+    <div class="summary">
+      <div class="summary-total">
+        {{ remaining }}<span class="summary-total-label">remaining</span>
+      </div>
+      <div class="breakdown">
+        <span class="chip{% if card.css_class == 'tag-current-new' %} chip-current{% elif remaining_new == 0 %} chip-empty{% endif %}">new {{ remaining_new }}</span>
+        <span class="chip{% if card.css_class == 'tag-current-learning' %} chip-current{% elif remaining_learning == 0 %} chip-empty{% endif %}">learn {{ remaining_learning }}</span>
+        <span class="chip{% if card.css_class == 'tag-current-review' %} chip-current{% elif remaining_review == 0 %} chip-empty{% endif %}">review {{ remaining_review }}</span>
+      </div>
+    </div>
     <form method="post" action="/deck/{{ deck_id }}/flag" class="flag-form">
       <input type="hidden" name="card_id" value="{{ card.card_id }}">
       <select id="flag-select" name="flag" class="flag-select" onchange="this.form.submit()" aria-label="Flag">
         <option value="0" {% if card.flag == 0 %}selected{% endif %}>None</option>
-        <option value="1" {% if card.flag == 1 %}selected{% endif %}>Red</option>
-        <option value="2" {% if card.flag == 2 %}selected{% endif %}>Yellow</option>
-        <option value="3" {% if card.flag == 3 %}selected{% endif %}>Green</option>
-        <option value="4" {% if card.flag == 4 %}selected{% endif %}>Blue</option>
+        <option value="1" {% if card.flag == 1 %}selected{% endif %}>Red ⚑</option>
+        <option value="2" {% if card.flag == 2 %}selected{% endif %}>Yellow ⚑</option>
+        <option value="3" {% if card.flag == 3 %}selected{% endif %}>Green ⚑</option>
+        <option value="4" {% if card.flag == 4 %}selected{% endif %}>Blue ⚑</option>
       </select>
       <noscript><button type="submit" class="btn btn-small">Set</button></noscript>
     </form>
