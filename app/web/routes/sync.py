@@ -23,6 +23,7 @@ from app.sync.client import (
 )
 from app.sync.media_http import sync_media_direct
 from app.sync.state import SyncState
+from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,7 @@ def _start_media_sync_after_full(
 @router.post("/sync", response_model=None)
 async def sync_post(
     account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
 ) -> RedirectResponse:
     """Starts synchronisation with AnkiWeb for the current account."""
 
@@ -283,6 +285,7 @@ async def sync_conflict_get(
 async def sync_conflict_post(
     direction: str = Form(...),
     account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
 ) -> RedirectResponse:
     """Records the user's chosen direction (or cancellation)."""
 
@@ -331,6 +334,7 @@ async def sync_full_confirm_get(
 async def sync_full_post(
     direction: str = Form(...),
     account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
 ) -> RedirectResponse:
     """Executes the previously-confirmed full upload or download."""
 

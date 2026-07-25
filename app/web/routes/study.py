@@ -21,6 +21,7 @@ from app.domain.scheduler import (
 )
 from app.storage.account import Account
 from app.sync.client import try_sync
+from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,7 @@ async def study_post(
     good_interval: str = Form(""),
     easy_interval: str = Form(""),
     account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
 ) -> HTMLResponse | RedirectResponse:
     """Handles Reveal / Answer within a review session."""
 
@@ -192,6 +194,7 @@ async def flag_post(
     card_id: str = Form(""),
     flag: str = Form(""),
     account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
 ) -> RedirectResponse:
     """Sets the user flag (0..4) on a card and returns to the study page."""
 
@@ -224,6 +227,7 @@ async def mark_post(
     card_id: str = Form(""),
     marked: str = Form(""),
     account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
 ) -> RedirectResponse:
     """Toggles the "marked" (star) state on a card and returns to the study page.
 

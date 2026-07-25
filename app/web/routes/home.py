@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app import __version__
 from app.domain.scheduler import list_deck_stats, rebuild_filtered_deck
 from app.storage.account import Account
+from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional, get_session
 from app.web.session import Session
 
@@ -70,6 +71,7 @@ async def home(
 async def deck_rebuild_post(
     deck_id: int,
     account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
 ) -> RedirectResponse:
     """Rebuilds a filtered deck using its search terms."""
 

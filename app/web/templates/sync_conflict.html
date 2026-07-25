@@ -16,18 +16,21 @@
   {% endif %}
 
   <form method="post" action="/sync/conflict" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <button type="submit" name="direction" value="upload" class="btn">
       Upload to AnkiWeb
     </button>
   </form>
 
   <form method="post" action="/sync/conflict" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <button type="submit" name="direction" value="download" class="btn">
       Download from AnkiWeb
     </button>
   </form>
 
   <form method="post" action="/sync/conflict" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <button type="submit" name="direction" value="cancel" class="btn">
       Cancel
     </button>

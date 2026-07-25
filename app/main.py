@@ -54,6 +54,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates = Jinja2Templates(
         directory=str(BASE_DIR / "web" / "templates"),
     )
+    # CSRF token generator is exposed to every template via the
+    # ``csrf_token(request)`` callable — see ``app/web/csrf.py``.
+    from app.web.csrf import csrf_token as csrf_token_global
+
+    app.state.templates.env.globals["csrf_token"] = csrf_token_global
 
     app.mount(
         "/static",

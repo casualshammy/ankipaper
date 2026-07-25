@@ -22,6 +22,7 @@
   {% endif %}
 
   <form method="post" action="/sync/full" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="direction" value="{{ direction }}">
     <button type="submit" class="btn btn-primary">
       {% if direction == "upload" %}Yes, overwrite AnkiWeb{% else %}Yes, overwrite this device{% endif %}

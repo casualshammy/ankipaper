@@ -14,6 +14,7 @@ from app.sync.auth import AuthError, login
 from app.web.deps import get_session
 from app.web.ratelimit import client_ip, get_login_rate_limiter
 from app.web.session import Session, clear_session, write_session
+from app.web.csrf import require_csrf
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ async def login_post(
 
 
 @router.post("/logout", response_model=None)
-async def logout_post() -> RedirectResponse:
+async def logout_post(_: None = Depends(require_csrf)) -> RedirectResponse:
     """Deletes the cookie and redirects to /login.
 
     The hostKey and collection files are not removed — the user can sign

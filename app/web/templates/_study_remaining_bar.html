@@ -11,6 +11,7 @@
   </div>
   <div class="flag-toolbar">
     <form method="post" action="/deck/{{ deck_id }}/mark" class="mark-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
       <input type="hidden" name="card_id" value="{{ card.card_id }}">
       <input type="hidden" name="marked" value="{{ '0' if card.is_marked else '1' }}">
       <button type="submit" class="mark-btn{% if card.is_marked %} mark-btn-on{% endif %}" aria-label="{% if card.is_marked %}Unmark{% else %}Mark{% endif %}">
@@ -18,6 +19,7 @@
       </button>
     </form>
     <form method="post" action="/deck/{{ deck_id }}/flag" class="flag-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
       <input type="hidden" name="card_id" value="{{ card.card_id }}">
       <select id="flag-select" name="flag" class="flag-select" onchange="this.form.submit()" aria-label="Flag">
         <option value="0" {% if card.flag == 0 %}selected{% endif %}>None</option>
