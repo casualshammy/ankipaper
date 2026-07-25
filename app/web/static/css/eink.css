@@ -38,6 +38,14 @@ a:focus, button:focus, input:focus {
   font-weight: bold;
   font-size: 22px;
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-icon {
+  height: 1.4em;
+  width: auto;
 }
 
 .nav {
