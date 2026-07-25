@@ -9,11 +9,6 @@ services:
       - "8000:8000"
     volumes:
       - ./.data:/data
-    environment:
-      KINDLANKI_BASE_URL: ${KINDLANKI_BASE_URL:-http://localhost:8000}
-      KINDLANKI_COOKIE_MAX_AGE_DAYS: ${KINDLANKI_COOKIE_MAX_AGE_DAYS:-30}
-      KINDLANKI_BEHIND_PROXY: ${KINDLANKI_BEHIND_PROXY:-false}
-      KINDLANKI_REDIS_URL: redis://redis:6379/0
     env_file:
       - .env
     depends_on:
