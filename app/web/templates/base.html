@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}kindlanki{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/eink.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">kindlanki</a>
+    <nav class="nav">
+      {% block nav %}
+        {# Индикатор media-sync: появляется, когда идёт синхронизация. #}
+        <span id="sync-indicator" class="sync-indicator" style="display:none;">
+          <span class="sync-spinner" aria-hidden="true">&#x21BB;</span>
+          <span id="sync-pct" class="muted">0%</span>
+        </span>
+        <form method="post" action="/sync" class="nav-form">
+          <button type="submit" id="sync-btn" class="btn">Sync</button>
+        </form>
+        <form method="post" action="/logout" class="nav-form">
+          <button type="submit" class="btn">Logout</button>
+        </form>
+      {% endblock %}
+    </nav>
+  </header>
+
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    {% block footer %}
+      <span class="muted">v{{ version }}</span>
+    {% endblock %}
+  </footer>
+
+  {# Глобальный JS: poll статуса media-sync, обновление индикатора. #}
+  <script>
+    (function () {
+      var ind = document.getElementById('sync-indicator');
+      var pctEl = document.getElementById('sync-pct');
+      var btn = document.getElementById('sync-btn');
+      if (!ind || !pctEl) return;
+
+      function hide() { ind.style.display = 'none'; btn.disabled = false; }
+      function show(pct) {
+        ind.style.display = 'inline-flex';
+        pctEl.textContent = (pct || 0) + '%';
+        btn.disabled = true;
+      }
+
+      function poll() {
+        fetch('/sync/status.json', { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (s) {
+            if (s.status === 'running') {
+              show(s.percent || 0);
+              setTimeout(poll, 2000);
+            } else if (s.status === 'done') {
+              show(100);
+              setTimeout(hide, 1500);
+            } else if (s.status === 'error') {
+              pctEl.textContent = '!';
+              setTimeout(hide, 3000);
+            } else {
+              hide();
+            }
+          })
+          .catch(function () { setTimeout(poll, 5000); });
+      }
+      poll();
+    })();
+  </script>
+</body>
+</html>

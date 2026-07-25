@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Study — kindlanki{% endblock %}
+
+{% block content %}
+  <p class="muted remaining">
+    Remaining: <strong>{{ remaining }}</strong>
+    <span class="muted-breakdown">
+      <span class="tag tag-new {{ 'tag-current-new' if card.css_class == 'tag-current-new' else '' }}">new {{ remaining_new }}</span>
+      <span class="tag tag-learning {{ 'tag-current-learning' if card.css_class == 'tag-current-learning' else '' }}">learn {{ remaining_learning }}</span>
+      <span class="tag tag-review {{ 'tag-current-review' if card.css_class == 'tag-current-review' else '' }}">review {{ remaining_review }}</span>
+    </span>
+  </p>
+
+  <article class="card">
+    {{ card.question_html | safe }}
+  </article>
+
+  <form method="post" action="/deck/{{ deck_id }}/study" class="form">
+    <input type="hidden" name="card_id" value="{{ card.card_id }}">
+    <input type="hidden" name="card_type" value="{{ card.card_type }}">
+    <div class="actions">
+      <button type="submit" name="reveal" value="1" class="btn btn-primary">Show answer</button>
+    </div>
+  </form>
+
+  <p class="actions-row">
+    <a class="btn" href="/">Back to decks</a>
+  </p>
+{% endblock %}

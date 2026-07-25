@@ -1,0 +1,300 @@
+/* kindlanki — стили под e-ink Kindle (32 градации серого, без JS).
+   Палитра: чёрный, белый и 7 оттенков серого. Без цвета, без градиентов,
+   без border-radius (Kindle плохо их рендерит), без теней. */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #ffffff;
+  color: #000000;
+  font-family: serif;
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+a {
+  color: #000000;
+  text-decoration: underline;
+}
+
+a:focus, button:focus, input:focus {
+  outline: 2px solid #000000;
+  outline-offset: 2px;
+}
+
+/* Top bar -------------------------------------------------------------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 2px solid #000000;
+}
+
+.brand {
+  font-weight: bold;
+  font-size: 22px;
+  text-decoration: none;
+}
+
+.nav {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-form {
+  margin: 0;
+  padding: 0;
+  display: inline;
+}
+
+/* Content -------------------------------------------------------------- */
+.content {
+  padding: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 28px;
+  margin: 16px 0;
+  border-bottom: 1px solid #555555;
+  padding-bottom: 8px;
+}
+
+p {
+  margin: 12px 0;
+}
+
+.muted { color: #555555; }
+.notice { font-weight: bold; }
+.error { font-weight: bold; }
+
+/* Footer --------------------------------------------------------------- */
+.footer {
+  padding: 12px 16px;
+  border-top: 1px solid #888888;
+  text-align: right;
+  font-size: 14px;
+}
+
+/* Forms ---------------------------------------------------------------- */
+.form { margin: 16px 0; }
+
+.field {
+  display: block;
+  margin: 12px 0;
+}
+
+.field-label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: 10px;
+  font-size: 20px;
+  font-family: inherit;
+  border: 2px solid #000000;
+  background: #ffffff;
+  color: #000000;
+}
+
+.actions {
+  margin: 16px 0;
+  display: flex;
+  gap: 8px;
+}
+
+.actions-row { margin: 16px 0; }
+
+/* Buttons -------------------------------------------------------------- */
+.btn {
+  display: inline-block;
+  padding: 12px 16px;
+  font-size: 20px;
+  font-family: inherit;
+  font-weight: bold;
+  background: #ffffff;
+  color: #000000;
+  border: 2px solid #000000;
+  text-decoration: none;
+  cursor: pointer;
+  min-width: 80px;
+  text-align: center;
+}
+
+.btn-primary {
+  background: #000000;
+  color: #ffffff;
+}
+
+/* Deck list ------------------------------------------------------------ */
+table.decks {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+table.decks th,
+table.decks td {
+  border-bottom: 1px solid #888888;
+  padding: 10px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.decks th {
+  font-weight: bold;
+  border-bottom: 2px solid #000000;
+}
+
+table.decks .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.deck-link {
+  font-weight: bold;
+}
+
+/* Card view ------------------------------------------------------------ */
+/* Anki встраивает свой ``<style>`` прямо в HTML карточки (``notetype.css`` +
+   ``cloze_styling.css``). Этот блок отвечает только за то, что Anki не
+   покрывает: рамку, поведение битых картинок и обязательный override для
+   cloze, который Anki рисует синим (``color: blue`` — невидимо на e-ink). */
+
+.card {
+  border: 2px solid #000000;
+  padding: 16px;
+  margin: 16px 0;
+  min-height: 120px;
+}
+
+.card img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Сломанные/недоступные картинки не должны съедать место. */
+img[src=""],
+img:not([src]) {
+  display: none;
+}
+
+/* Cloze: Anki задаёт ``color: blue``, невидимый на e-ink. Перебиваем чёрным
+   с ``!important``, чтобы выиграть против ``color: blue`` без ``!important``
+   из Anki-стиля. Сам формат cloze (c1, c2, скобки) Anki расставляет сам. */
+.cloze {
+  color: #000000 !important;
+  font-weight: bold !important;
+}
+
+/* Anki также рисует неактивные cloze (``cloze-inactive``) более бледными —
+   оставляем их чёрными, но приглушённого веса, чтобы визуально отличать. */
+.cloze-inactive {
+  color: #555555 !important;
+  font-weight: normal !important;
+}
+
+/* Anki ссылки внутри карточки — на e-ink они должны быть контрастными. */
+.card a {
+  color: #000000;
+  text-decoration: underline;
+}
+
+/* Ratings -------------------------------------------------------------- */
+.ratings {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+
+.ratings .btn {
+  flex: 1 1 0;
+  min-width: 90px;
+}
+
+/* Remaining breakdown ------------------------------------------------- */
+.remaining {
+  margin: 12px 0 16px 0;
+  font-size: 18px;
+}
+
+.muted-breakdown {
+  margin-left: 8px;
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  vertical-align: middle;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 14px;
+  border: 1px solid #000000;
+  background: #ffffff;
+  color: #000000;
+  line-height: 1.2;
+}
+
+/* Подчёркнутый тег текущего типа карточки — на e-ink легче увидеть,
+   к какому типу (new / learn / review) относится текущая карточка. */
+.tag-current-new,
+.tag-current-learning,
+.tag-current-review {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+  font-weight: bold;
+}
+
+/* Progress bar (sync_progress.html) ---------------------------------- */
+.progressbar {
+  width: 100%;
+  height: 28px;
+  border: 2px solid #000000;
+  background: #ffffff;
+  margin: 16px 0 8px 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.progressbar-fill {
+  height: 100%;
+  background: #000000;
+  /* Переход для плавности обновления. */
+  transition: width 0.3s linear;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  margin: 0;
+}
+
+/* Sync indicator (в шапке) ------------------------------------------ */
+.sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.sync-spinner {
+  display: inline-block;
+  font-size: 22px;
+  line-height: 1;
+  /* На старых WebKit (Kindle) анимация может не работать; используем
+     просто символ ↻, без CSS-animation. */
+}

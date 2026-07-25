@@ -1,0 +1,25 @@
+services:
+  kindlanki:
+    build:
+      context: .
+    image: kindlanki:latest
+    container_name: kindlanki
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      KINDLANKI_BASE_URL: ${KINDLANKI_BASE_URL:-http://localhost:8000}
+      KINDLANKI_DATA_DIR: /data
+      KINDLANKI_SESSION_SECRET_FILE: /data/session.secret
+      KINDLANKI_COOKIE_MAX_AGE_DAYS: ${KINDLANKI_COOKIE_MAX_AGE_DAYS:-30}
+      KINDLANKI_BEHIND_PROXY: ${KINDLANKI_BEHIND_PROXY:-false}
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

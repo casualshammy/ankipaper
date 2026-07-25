@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Decks — kindlanki{% endblock %}
+
+{% block content %}
+  <h1>Decks</h1>
+
+  {% if sync_ok %}
+    <p class="notice">Synced successfully.</p>
+  {% endif %}
+  {% if sync_error %}
+    <p class="error">Sync error: {{ sync_error }}</p>
+  {% endif %}
+
+  {% if not has_collection %}
+    <p class="notice">
+      No collection yet. Press <strong>Sync</strong> to download your decks
+      from AnkiWeb.
+    </p>
+  {% elif error %}
+    <p class="error">{{ error }}</p>
+  {% elif not decks %}
+    <p class="muted">No decks found.</p>
+  {% else %}
+    <table class="decks">
+      <thead>
+        <tr>
+          <th>Deck</th>
+          <th class="num">New</th>
+          <th class="num">Learn</th>
+          <th class="num">Review</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in decks %}
+          <tr>
+            <td><a class="deck-link" href="/deck/{{ d.deck_id }}/study">{{ d.name }}</a></td>
+            <td class="num">{{ d.new }}</td>
+            <td class="num">{{ d.learning }}</td>
+            <td class="num">{{ d.review }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

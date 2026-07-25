@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Done — kindlanki{% endblock %}
+
+{% block nav %}
+  <form method="post" action="/sync" class="nav-form">
+    <button type="submit" class="btn">Sync</button>
+  </form>
+  <form method="post" action="/logout" class="nav-form">
+    <button type="submit" class="btn">Logout</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+  <h1>Session complete</h1>
+
+  <p>No more cards due in this deck right now.</p>
+
+  {% if sync_attempted %}
+    {% if sync_error %}
+      <p class="error">Sync failed: {{ sync_error }}</p>
+    {% elif synced %}
+      <p class="notice">Synced to AnkiWeb.</p>
+    {% else %}
+      <p class="muted">Nothing to sync.</p>
+    {% endif %}
+  {% endif %}
+
+  <p class="actions-row">
+    <a class="btn" href="/">Back to decks</a>
+  </p>
+{% endblock %}
