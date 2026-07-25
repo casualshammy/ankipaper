@@ -44,7 +44,9 @@ def sanitize_account_id(username: str) -> str:
 
     if not username:
         raise ValueError("Empty username")
-    cleaned = username.strip()
+    if username != username.strip():
+        raise ValueError("Username has leading or trailing whitespace")
+    cleaned = username
     if not cleaned:
         raise ValueError("Empty username")
     if cleaned in (".", ".."):
