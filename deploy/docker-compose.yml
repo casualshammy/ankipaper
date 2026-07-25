@@ -31,7 +31,7 @@ services:
     container_name: kindlanki-redis
     restart: unless-stopped
     volumes:
-      - ./.data/redis:/data
+      - ./.redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

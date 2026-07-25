@@ -7,3 +7,4 @@ _anki_repo/
 _kindlanki-old/
 Anki-Android-main/
 .data/
+.redis/

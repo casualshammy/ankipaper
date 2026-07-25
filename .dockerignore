@@ -1,0 +1,12 @@
+.data/
+.git/
+.redis/
+.venv/
+deploy/
+.gitignore
+.env.example
+AGENTS.md
+docker-compose.yml
+*.pyc
+*.pyo
+*.pyd
