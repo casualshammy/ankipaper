@@ -158,8 +158,14 @@ class AccountStore:
             account_id: identifier (subdirectory name under ``accounts/``).
 
         Returns:
-            ``Account``, or ``None`` if no such directory exists on disk.
+            ``Account``, or ``None`` if the id is invalid or no such
+            directory exists on disk.
         """
+
+        try:
+            account_id = sanitize_account_id(account_id)
+        except ValueError:
+            return None
 
         with self._lock:
             existing = self._accounts.get(account_id)
