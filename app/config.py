@@ -30,6 +30,15 @@ class Settings(BaseSettings):
         description="True if the application runs behind a reverse proxy (nginx).",
     )
 
+    show_privacy_policy: bool = Field(
+        default=False,
+        description=(
+            "If true, the login and deck-list footers show a link to "
+            "/static/privacy_policy.html. Off by default so self-hosted "
+            "deployments stay clean; enable on public deployments."
+        ),
+    )
+
     debug_headers: bool = Field(
         default=False,
         description=(

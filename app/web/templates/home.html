@@ -67,11 +67,12 @@
   {% endif %}
 {% endblock %}
 
-<footer class="footer">
-  {% block footer %}
-    <span class="muted">v{{ version }}</span>
-  {% endblock %}
-</footer>
+{% block footer %}
+  <span class="muted">v{{ version }}</span>
+  {% if show_privacy_policy %}
+    <span>| <a href="/static/privacy_policy.html">Privacy Policy</a></span>
+  {% endif %}
+{% endblock %}
 
 {% block scripts %}
   {# Media-sync status polling is only needed on the home page: POST /sync
@@ -100,14 +101,14 @@
             if (s.status === 'running') {
               show(s.percent || 0);
               setTimeout(poll, 2000);
-            } else if (s.status === 'done') {
-              show(100);
-              setTimeout(hide, 1500);
             } else if (s.status === 'error') {
               btn.textContent = '❌ Sync';
               setTimeout(hide, 3000);
             } else if (s.changes_pending === true) {
               markPending();
+            } else if (s.status === 'done') {
+              show(100);
+              setTimeout(hide, 1500);
             } else {
               hide();
             }

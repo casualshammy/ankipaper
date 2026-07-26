@@ -86,6 +86,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.web.csrf import csrf_token as csrf_token_global
 
     app.state.templates.env.globals["csrf_token"] = csrf_token_global
+    app.state.templates.env.globals["show_privacy_policy"] = (
+        settings.show_privacy_policy
+    )
 
     app.mount(
         "/static",

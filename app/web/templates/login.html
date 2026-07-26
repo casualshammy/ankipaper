@@ -31,3 +31,10 @@
     </div>
   </form>
 {% endblock %}
+
+{% block footer %}
+  <span class="muted">v{{ version }}</span>
+  {% if show_privacy_policy %}
+    <span>| <a href="/static/privacy_policy.html">Privacy Policy</a></span>
+  {% endif %}
+{% endblock %}
