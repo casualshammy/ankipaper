@@ -161,9 +161,14 @@ def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
     ``queue``/``type``, etc.
     """
 
+    all_decks = list(col.decks.all_names_and_ids())
     result: list[DeckStats] = []
 
-    for deck in col.decks.all_names_and_ids():
+    for deck in all_decks:
+        # Hide the built-in Default deck (id == 1) when it has no subdecks
+        # and the collection has at least one other deck.
+        if int(deck.id) == 1 and len(all_decks) > 1 and not col.decks.children(int(deck.id)):
+            continue
         try:
             queued = _queued_card_for(col, int(deck.id))
         except Exception:  # noqa: BLE001
