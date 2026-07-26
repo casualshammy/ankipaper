@@ -60,6 +60,7 @@ All settings come from environment variables (or `.env`) with the `ANKIPAPER_` p
 | `ANKIPAPER_LOGIN_USER_WINDOW_SECONDS` | `3600` | Rolling window for the per-username limit. |
 | `ANKIPAPER_MEDIA_MAX_FILE_BYTES` | `1048576` (1 MiB) | Per-file media size cap during media-sync. |
 | `ANKIPAPER_MEDIA_MAX_COLLECTION_BYTES` | `209715200` (200 MiB) | Total `collection.media/` cap; existing directories over the cap are not extended. |
+| `ANKIPAPER_DATA_MAX_BYTES` | `0` (disabled) | Maximum total size of `/data` for new accounts; existing accounts remain accessible. |
 
 ## First run
 

@@ -66,6 +66,14 @@ class Settings(BaseSettings):
         description="Rolling window for the per-username login rate limit.",
     )
 
+    data_max_bytes: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Maximum total size of /data in bytes for new accounts. "
+            "Zero disables the limit."
+        ),
+    )
     media_max_file_bytes: int = Field(
         default=1 * 1024 * 1024,
         ge=1,

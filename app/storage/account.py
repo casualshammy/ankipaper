@@ -18,6 +18,7 @@ and are not duplicated per account.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -131,6 +132,34 @@ class AccountStore:
     @property
     def accounts_dir(self) -> Path:
         return self._accounts_dir
+
+    def account_exists_on_disk(self, username: str) -> bool:
+        """Returns whether an account directory already exists on disk."""
+
+        try:
+            account_id = sanitize_account_id(username)
+        except ValueError:
+            return False
+        return (self._accounts_dir / account_id).is_dir()
+
+    def data_size_bytes(self) -> int:
+        """Returns the total regular-file size under ``/data``."""
+
+        total = 0
+        for root, _, filenames in os.walk("/data", followlinks=False):
+            for filename in filenames:
+                try:
+                    total += (Path(root) / filename).stat().st_size
+                except OSError:
+                    continue
+        return total
+
+    def can_create_account(self, username: str, max_data_bytes: int) -> bool:
+        """Returns whether a new account may be registered under the data limit."""
+
+        if self.account_exists_on_disk(username):
+            return True
+        return max_data_bytes == 0 or self.data_size_bytes() <= max_data_bytes
 
     def get_or_create(self, username: str) -> Account:
         """Returns the existing account or creates a new one from the username."""

@@ -93,6 +93,21 @@ async def login_post(
             status_code=429,
         )
 
+    store = get_account_store()
+    if not store.can_create_account(username, request.app.state.settings.data_max_bytes):
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "version": __version__,
+                "account": None,
+                "reason": None,
+                "error": "New account registration is temporarily unavailable because the data storage limit has been reached.",
+                "username": username,
+            },
+            status_code=401,
+        )
+
     try:
         host_key = login(username, password)
     except AuthError as exc:
@@ -113,7 +128,6 @@ async def login_post(
     # themselves out by signing in and out repeatedly. Best-effort.
     await limiter.reset(ip, username)
 
-    store = get_account_store()
     account = store.get_or_create(username)
     account.save_host_key(host_key)
     logger.info(
