@@ -47,6 +47,11 @@ class SyncState:
     # sync finishes without hitting the limit.
     media_collection_too_large: bool = False
 
+    # Result of the last ``col.sync_status()`` probe. ``None`` means
+    # "never checked" or "the probe failed"; the indicator on the Sync
+    # button only fires for an explicit ``True``.
+    changes_pending: bool | None = None
+
     def to_dict(self) -> dict[str, Any]:
         """Returns a dict ready for JSON serialisation."""
 

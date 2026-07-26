@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.storage.account import Account
+from app.sync.auth import make_auth
 from app.sync.client import (
     AuthExpiredError,
     FullSyncKind,
@@ -163,6 +164,18 @@ def _start_media_sync_after_full(
     )
 
 
+def _probe_changes(
+    col: Any,
+    host_key: str,
+    endpoint: str | None,
+) -> tuple[bool, str | None]:
+    """Calls ``col.sync_status`` and returns ``(required, new_endpoint)``."""
+
+    auth = make_auth(host_key, endpoint)
+    status = col.sync_status(auth)
+    return bool(status.required), status.new_endpoint or None
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -197,6 +210,10 @@ async def sync_post(
         if account.sync_state.conflict_direction:
             return RedirectResponse("/sync/full/confirm", status_code=303)
         return RedirectResponse("/sync/conflict", status_code=303)
+
+    # Invalidate the pre-sync probe — the user has just kicked off a
+    # sync, so any cached ``changes_pending`` value is now stale.
+    account.sync_state.changes_pending = None
 
     manager = account.manager
 
@@ -259,12 +276,38 @@ async def sync_post(
 async def sync_status_json(
     account: Account | None = Depends(get_current_account_optional),
 ) -> JSONResponse:
-    """Lightweight JSON endpoint polled by the top-bar indicator (every 2s)."""
+    """Lightweight JSON endpoint polled by the top-bar indicator (every 2s).
+
+    Each call also probes AnkiWeb for pending changes (single HTTP
+    round-trip, no data transfer) and surfaces the result as
+    ``changes_pending``. The probe is skipped while a sync is in flight
+    and capped at a 3-second timeout so a slow AnkiWeb cannot stall the
+    poll.
+    """
 
     if account is None:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
-    return JSONResponse(account.sync_state.to_dict())
+    state = account.sync_state
+    if state.status != "running":
+        host_key = account.host_key()
+        if host_key:
+            try:
+                required, new_endpoint = await asyncio.wait_for(
+                    account.manager.run(
+                        _probe_changes, host_key, state.conflict_new_endpoint
+                    ),
+                    timeout=3.0,
+                )
+                state.changes_pending = required
+                if new_endpoint:
+                    state.conflict_new_endpoint = new_endpoint
+            except asyncio.TimeoutError:
+                logger.debug("sync_status probe timed out for %s", account.id)
+            except Exception:  # noqa: BLE001
+                logger.exception("sync_status probe failed for %s", account.id)
+
+    return JSONResponse(state.to_dict())
 
 
 # --- Full-sync conflict resolution ---------------------------------------

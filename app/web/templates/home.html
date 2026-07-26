@@ -3,8 +3,6 @@
 {% block title %}Decks — AnkiPaper{% endblock %}
 
 {% block content %}
-  <h1>Decks</h1>
-
   {% if media_collection_too_large %}
     <section class="notice notice-block">
       <p>
@@ -90,6 +88,10 @@
         btn.textContent = '\u23F2\uFE0E ' + (pct || 0) + '%';
         btn.disabled = true;
       }
+      function markPending() {
+        btn.disabled = false;
+        btn.textContent = "Sync \u25CF";
+      }
 
       function poll() {
         fetch('/sync/status.json', { credentials: 'same-origin' })
@@ -104,11 +106,13 @@
             } else if (s.status === 'error') {
               btn.textContent = '❌ Sync';
               setTimeout(hide, 3000);
+            } else if (s.changes_pending === true) {
+              markPending();
             } else {
               hide();
             }
           })
-          .catch(function () { setTimeout(poll, 5000); });
+          .catch(function () { /* swallow; no polling on error */ });
       }
       poll();
     })();

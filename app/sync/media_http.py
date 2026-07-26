@@ -680,7 +680,6 @@ def sync_media_direct(
             deleted += 1
             deleted_bytes += size
         except FileNotFoundError:
-            # Already gone — idempotent; count as success.
             deleted += 1
         except OSError:
             logger.exception("Failed to delete media file: %r", fname)
