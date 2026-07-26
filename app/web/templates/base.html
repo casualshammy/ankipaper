@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}kindlanki{% endblock %}</title>
+  <title>{% block title %}AnkiPaper{% endblock %}</title>
   <link rel="icon" href="/static/favicon.ico">
   <link rel="stylesheet" href="/static/css/eink.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/"><img class="brand-icon" src="/static/app_icon_256.webp" alt=""><span class="brand-text">{% block brand_text %}kindlanki{% endblock %}</span></a>
+    <a class="brand" href="/"><img class="brand-icon" src="/static/app_icon_256.webp" alt=""><span class="brand-text">{% block brand_text %}AnkiPaper{% endblock %}</span></a>
     <nav class="nav">
       {% block nav %}
         {% if is_filtered and deck_id %}

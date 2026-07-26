@@ -1,9 +1,9 @@
 services:
-  kindlanki:
+  ankipaper:
     build:
       context: .
-    image: kindlanki:latest
-    container_name: kindlanki
+    image: ankipaper:latest
+    container_name: ankipaper
     restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
@@ -23,7 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: kindlanki-redis
+    container_name: ankipaper-redis
     restart: unless-stopped
     volumes:
       - ./.redis:/data

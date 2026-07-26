@@ -48,7 +48,7 @@ def _csrf_serializer() -> URLSafeSerializer | None:
     except OSError as exc:
         logger.warning("Cannot read session secret for CSRF: %s", exc)
         return None
-    return URLSafeSerializer(secret, salt="kindlanki-csrf")
+    return URLSafeSerializer(secret, salt="ankipaper-csrf")
 
 
 def make_csrf_token(sid: str) -> str:

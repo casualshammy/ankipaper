@@ -42,7 +42,7 @@ DEFAULT_ENDPOINT = "https://sync.ankiweb.net/"
 SYNC_VERSION = 11
 ORIGINAL_SIZE_HEADER = "anki-original-size"
 SYNC_HEADER_NAME = "anki-sync"
-USER_AGENT = "kindlanki/0.1"
+USER_AGENT = "AnkiPaper/0.1"
 
 # Streaming chunk size for media extraction. Small enough to keep
 # memory bounded, large enough to keep syscall overhead low.

@@ -23,7 +23,7 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-COOKIE_NAME = "kindlanki_session"
+COOKIE_NAME = "ankipaper_session"
 COOKIE_KEY = "user"
 
 
@@ -48,7 +48,7 @@ def _serializer() -> URLSafeSerializer | None:
     except OSError as exc:
         logger.warning("Cannot read session secret: %s", exc)
         return None
-    return URLSafeSerializer(secret, salt="kindlanki-cookie")
+    return URLSafeSerializer(secret, salt="ankipaper-cookie")
 
 
 def _max_age_seconds() -> int:
@@ -101,7 +101,7 @@ def write_session(response: Response, account_id: str) -> None:
     if s is None:
         from app.storage.secrets import _load_or_create_fernet_key
 
-        s = URLSafeSerializer(_load_or_create_fernet_key(), salt="kindlanki-cookie")
+        s = URLSafeSerializer(_load_or_create_fernet_key(), salt="ankipaper-cookie")
 
     token = s.dumps({COOKIE_KEY: account_id})
     response.set_cookie(

@@ -13,11 +13,11 @@ RUN pip install --upgrade pip \
 
 COPY app ./app
 
-RUN useradd --create-home --uid 1000 kindlanki \
+RUN useradd --create-home --uid 1000 ankipaper \
     && mkdir -p /data \
-    && chown -R kindlanki:kindlanki /data /app
+    && chown -R ankipaper:ankipaper /data /app
 
-USER kindlanki
+USER ankipaper
 
 EXPOSE 8000
 

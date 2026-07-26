@@ -27,7 +27,7 @@ def _open_temp_collection() -> tuple[anki.collection.Collection, str]:
         tuple of (open collection, path to the temporary file).
     """
 
-    fd, path = tempfile.mkstemp(prefix="kindlanki-login-", suffix=".anki21")
+    fd, path = tempfile.mkstemp(prefix="ankipaper-login-", suffix=".anki21")
     os.close(fd)
     return anki.collection.Collection(path), path
 

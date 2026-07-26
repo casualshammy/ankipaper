@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-CONTAINER="${CONTAINER:-kindlanki}"
+CONTAINER="${CONTAINER:-ankipaper}"
 ACTIVE_MINUTES="${ACTIVE_MINUTES:-10}"
 
 if ! [[ "$ACTIVE_MINUTES" =~ ^[1-9][0-9]*$ ]]; then
@@ -82,7 +82,7 @@ total_size = sum(size for _, size, _ in stats)
 active_count = sum(active for _, _, active in stats)
 
 print("+------------------------------------------------------------+")
-print("|                  Kindlanki: accounts                        |")
+print("|                  AnkiPaper: accounts                         |")
 print("+------------------------------------------------------------+")
 print(f"  Total accounts:         {len(stats)}")
 print(f"  Active in last {active_minutes:>3} min: {active_count}")

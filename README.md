@@ -1,4 +1,4 @@
-# kindlanki
+# AnkiPaper
 
 Anki client for Amazon Kindle. Lets you sign in to AnkiWeb, browse decks with statistics, and review cards through the built-in Kindle browser — no JS in notes, no colour UI, only what reads well on e-ink.
 
@@ -40,26 +40,26 @@ docker compose -f deploy/docker-compose.yml --project-directory "." up --build
 
 Two services come up:
 
-- `kindlanki` — the FastAPI app on port `8000`.
+- `ankipaper` — the FastAPI app on port `8000`.
 - `redis` — rate-limit backend (Alpine, healthchecked).
 
 The application is available at `http://localhost:8000`. State is persisted in `./.data/` and `./.redis/`.
 
 ## Configuration
 
-All settings come from environment variables (or `.env`) with the `KINDLANKI_` prefix:
+All settings come from environment variables (or `.env`) with the `ANKIPAPER_` prefix:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `KINDLANKI_COOKIE_MAX_AGE_DAYS` | `30` | Cookie session lifetime. |
-| `KINDLANKI_BEHIND_PROXY` | `false` | Set `true` behind nginx — enables `Secure` cookies and trusts `X-Forwarded-Proto`. |
-| `KINDLANKI_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL for rate limiting. |
-| `KINDLANKI_LOGIN_IP_MAX_ATTEMPTS` | `5` | Max failed logins per IP within the IP window. |
-| `KINDLANKI_LOGIN_IP_WINDOW_SECONDS` | `60` | Rolling window for the per-IP limit. |
-| `KINDLANKI_LOGIN_USER_MAX_ATTEMPTS` | `10` | Max failed logins per username within the user window. |
-| `KINDLANKI_LOGIN_USER_WINDOW_SECONDS` | `3600` | Rolling window for the per-username limit. |
-| `KINDLANKI_MEDIA_MAX_FILE_BYTES` | `1048576` (1 MiB) | Per-file media size cap during media-sync. |
-| `KINDLANKI_MEDIA_MAX_COLLECTION_BYTES` | `209715200` (200 MiB) | Total `collection.media/` cap; existing directories over the cap are not extended. |
+| `ANKIPAPER_COOKIE_MAX_AGE_DAYS` | `30` | Cookie session lifetime. |
+| `ANKIPAPER_BEHIND_PROXY` | `false` | Set `true` behind nginx — enables `Secure` cookies and trusts `X-Forwarded-Proto`. |
+| `ANKIPAPER_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL for rate limiting. |
+| `ANKIPAPER_LOGIN_IP_MAX_ATTEMPTS` | `5` | Max failed logins per IP within the IP window. |
+| `ANKIPAPER_LOGIN_IP_WINDOW_SECONDS` | `60` | Rolling window for the per-IP limit. |
+| `ANKIPAPER_LOGIN_USER_MAX_ATTEMPTS` | `10` | Max failed logins per username within the user window. |
+| `ANKIPAPER_LOGIN_USER_WINDOW_SECONDS` | `3600` | Rolling window for the per-username limit. |
+| `ANKIPAPER_MEDIA_MAX_FILE_BYTES` | `1048576` (1 MiB) | Per-file media size cap during media-sync. |
+| `ANKIPAPER_MEDIA_MAX_COLLECTION_BYTES` | `209715200` (200 MiB) | Total `collection.media/` cap; existing directories over the cap are not extended. |
 
 ## First run
 

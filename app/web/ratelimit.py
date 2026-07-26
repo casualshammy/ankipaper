@@ -278,7 +278,7 @@ def client_ip(request: Request, settings: Settings | None = None) -> str:
     Otherwise ``request.client.host`` is used — which, in a Docker setup
     with nginx in front, will be the nginx container's IP and
     effectively rate-limit the entire deployment. Always set
-    ``KINDLANKI_BEHIND_PROXY=true`` in production.
+    ``ANKIPAPER_BEHIND_PROXY=true`` in production.
     """
 
     settings = settings or get_settings()

@@ -45,7 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await close_redis()
 
     app = FastAPI(
-        title="kindlanki",
+        title="AnkiPaper",
         version=__version__,
         docs_url=None,
         redoc_url=None,

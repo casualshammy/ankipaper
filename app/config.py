@@ -1,4 +1,4 @@
-"""Application configuration for kindlanki."""
+"""Application configuration for AnkiPaper."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     """Application settings read from environment variables and the .env file."""
 
     model_config = SettingsConfigDict(
-        env_prefix="KINDLANKI_",
+        env_prefix="ANKIPAPER_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",

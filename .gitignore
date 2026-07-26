@@ -4,7 +4,7 @@ __pycache__/
 .venv/
 .env
 _anki_repo/
-_kindlanki-old/
+_ankipaper-old/
 Anki-Android-main/
 .data/
 .redis/
