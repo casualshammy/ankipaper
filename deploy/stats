@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+CONTAINER="${CONTAINER:-kindlanki}"
+ACTIVE_MINUTES="${ACTIVE_MINUTES:-10}"
+
+if ! [[ "$ACTIVE_MINUTES" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'Error: ACTIVE_MINUTES must be a positive integer.\n' >&2
+  exit 1
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  printf 'Error: docker command not found.\n' >&2
+  exit 1
+fi
+
+if ! docker inspect --format '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -qx true; then
+  printf 'Error: container "%s" not found or not running.\n' "$CONTAINER" >&2
+  exit 1
+fi
+
+docker exec -i "$CONTAINER" python - "$ACTIVE_MINUTES" <<'PY'
+import sys
+import time
+from pathlib import Path
+
+accounts_dir = Path("/data/accounts")
+active_minutes = int(sys.argv[1])
+active_since = time.time() - active_minutes * 60
+
+
+def allocated_size(path: Path) -> int:
+  total = 0
+  stack = [path]
+  while stack:
+    current = stack.pop()
+    try:
+      stat = current.stat(follow_symlinks=False)
+      total += getattr(stat, "st_blocks", 0) * 512
+      if current.is_dir() and not current.is_symlink():
+        stack.extend(current.iterdir())
+    except (FileNotFoundError, PermissionError):
+      continue
+  return total
+
+
+def is_active(path: Path) -> bool:
+  stack = [path]
+  while stack:
+    current = stack.pop()
+    try:
+      if current.is_dir() and not current.is_symlink():
+        stack.extend(current.iterdir())
+      elif current.stat(follow_symlinks=False).st_mtime >= active_since:
+        return True
+    except (FileNotFoundError, PermissionError):
+      continue
+  return False
+
+
+def human_size(size: int) -> str:
+  units = ("B", "KiB", "MiB", "GiB", "TiB")
+  value = float(size)
+  for unit in units:
+    if value < 1024 or unit == units[-1]:
+      return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+    value /= 1024
+  return f"{size} B"
+
+
+if not accounts_dir.is_dir():
+  print('Error: "/data/accounts" directory not found in the container.', file=sys.stderr)
+  raise SystemExit(1)
+
+accounts = sorted(
+  (path for path in accounts_dir.iterdir() if path.is_dir() and not path.is_symlink()),
+  key=lambda path: path.name,
+)
+stats = [(path.name, allocated_size(path), is_active(path)) for path in accounts]
+stats.sort(key=lambda item: item[1], reverse=True)
+total_size = sum(size for _, size, _ in stats)
+active_count = sum(active for _, _, active in stats)
+
+print("+------------------------------------------------------------+")
+print("|                  Kindlanki: accounts                        |")
+print("+------------------------------------------------------------+")
+print(f"  Total accounts:         {len(stats)}")
+print(f"  Active in last {active_minutes:>3} min: {active_count}")
+print(f"  Total data size:        {human_size(total_size)}")
+print()
+print("  10 largest accounts")
+print("  #   Account                                   Size")
+print("  --  ----------------------------------------  ------------")
+if stats:
+  for index, (name, size, _) in enumerate(stats[:10], start=1):
+    display_name = name if len(name) <= 40 else name[:37] + "..."
+    print(f"  {index:>2}  {display_name:<40}  {human_size(size):>12}")
+else:
+  print("  No accounts found")
+print()
+print("  Size is calculated from actual filesystem blocks allocated.")
+PY

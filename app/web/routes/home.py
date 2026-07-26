@@ -54,7 +54,6 @@ async def home(
         "home.html",
         {
             "version": __version__,
-            "base_url": settings.base_url,
             "account": account,
             "decks": decks,
             "has_collection": has_collection,

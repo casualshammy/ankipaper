@@ -19,11 +19,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    base_url: str = Field(
-        default="http://localhost:8000",
-        description="Public application URL used for absolute links.",
-    )
-
     cookie_max_age_days: int = Field(
         default=30,
         ge=1,

@@ -51,7 +51,6 @@ All settings come from environment variables (or `.env`) with the `KINDLANKI_` p
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `KINDLANKI_BASE_URL` | `http://localhost:8000` | Public URL used for absolute links. |
 | `KINDLANKI_COOKIE_MAX_AGE_DAYS` | `30` | Cookie session lifetime. |
 | `KINDLANKI_BEHIND_PROXY` | `false` | Set `true` behind nginx — enables `Secure` cookies and trusts `X-Forwarded-Proto`. |
 | `KINDLANKI_REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL for rate limiting. |
