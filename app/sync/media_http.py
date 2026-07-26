@@ -460,7 +460,8 @@ def sync_media_direct(
 
     Returns:
         Dict with the result: ``{"downloaded": N, "total": N,
-        "skipped": N, "skipped_oversize": N, "last_usn": N,
+        "skipped": N, "skipped_oversize": N, "deleted": N,
+        "delete_errors": N, "bytes_freed": N, "last_usn": N,
         "endpoint": "...", "collection_too_large": bool}``.
     """
 
@@ -493,6 +494,11 @@ def sync_media_direct(
             last_usn = 0
 
     all_files: list[tuple[str, str]] = []  # (fname, sha1)
+    # Filenames whose sha1 is empty on AnkiWeb — they were deleted there
+    # and we should drop the matching file from ``collection.media`` to
+    # free disk space. ``last_usn`` is advanced past these entries below
+    # regardless of whether the local unlink actually succeeds.
+    to_delete: list[str] = []
     skipped_unsupported = 0
     while True:
         raw = _post_json(
@@ -509,6 +515,11 @@ def sync_media_direct(
                 continue
             fname, _entry_usn, sha1 = c[0], c[1], c[2]
             if not sha1:
+                # Empty sha1 means "deleted on AnkiWeb" — defer the local
+                # unlink until after downloads so a download failure does
+                # not strand already-deleted entries that we'd then have to
+                # re-process on the next sync.
+                to_delete.append(fname)
                 continue
             if image_only and not _is_supported(fname):
                 skipped_unsupported += 1
@@ -640,6 +651,41 @@ def sync_media_direct(
             except Exception:  # noqa: BLE001
                 logger.exception("progress_callback raised during downloadFiles")
 
+    # Apply deletions. We do this after downloads so a download failure
+    # does not strand already-deleted entries that we'd then have to
+    # re-process on the next sync. Each name goes through
+    # ``_safe_media_path`` to refuse unlinks outside ``media_dir``.
+    deleted = 0
+    deleted_bytes = 0
+    delete_errors = 0
+    for fname in to_delete:
+        target = _safe_media_path(fname, media_dir)
+        if target is None:
+            logger.warning(
+                "Skipping media deletion with unsafe filename: %r", fname
+            )
+            delete_errors += 1
+            continue
+        size = 0
+        try:
+            size = target.stat().st_size
+        except FileNotFoundError:
+            pass
+        except OSError:
+            logger.warning(
+                "Failed to stat media file before delete: %r", fname
+            )
+        try:
+            target.unlink()
+            deleted += 1
+            deleted_bytes += size
+        except FileNotFoundError:
+            # Already gone — idempotent; count as success.
+            deleted += 1
+        except OSError:
+            logger.exception("Failed to delete media file: %r", fname)
+            delete_errors += 1
+
     # Save last_usn for the next incremental sync. We persist it even
     # when the collection hit the size limit — the server-side state has
     # already advanced past these files, and we don't want to redownload
@@ -650,9 +696,11 @@ def sync_media_direct(
     last_usn_path.write_text(str(server_usn))
 
     logger.info(
-        "Media sync complete: %d files downloaded, %d unsupported skipped, "
-        "%d oversize skipped, %d bytes written, collection_too_large=%s, last_usn=%s",
+        "Media sync complete: %d files downloaded, %d deleted, %d unsupported "
+        "skipped, %d oversize skipped, %d bytes written, "
+        "collection_too_large=%s, last_usn=%s",
         len(downloaded),
+        deleted,
         skipped_unsupported,
         skipped_oversize,
         bytes_written,
@@ -665,6 +713,9 @@ def sync_media_direct(
         "total": len(all_files),
         "skipped": skipped_unsupported,
         "skipped_oversize": skipped_oversize,
+        "deleted": deleted,
+        "delete_errors": delete_errors,
+        "bytes_freed": deleted_bytes,
         "bytes_written": bytes_written,
         "collection_too_large": collection_too_large,
         "last_usn": server_usn,
