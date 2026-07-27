@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}{{ brand_name }} — Review Anki flashcards on a Kindle or e-ink browser{% endblock %}
+
+{% block content %}
+  <h1>Review your Anki flashcards on a Kindle or e-ink browser</h1>
+
+  <p>
+    {{ brand_name }} is a free web app that talks to AnkiWeb and renders your cards
+    in a server-rendered interface designed for slow monochrome browsers.
+    Sign in with your existing AnkiWeb account — no separate signup, no install,
+    no premium tier.
+  </p>
+
+  <h2>What you get</h2>
+  <ul>
+    <li>
+      <strong>Works on Kindle and other e-ink devices.</strong>
+      Built-in browser only — no app, no extension.
+    </li>
+    <li>
+      <strong>Uses your existing AnkiWeb account.</strong>
+      Your decks, progress, and statistics sync back and forth with AnkiWeb,
+      Anki Desktop, and AnkiMobile.
+    </li>
+    <li>
+      <strong>The real Anki scheduler.</strong>
+      The same FSRS algorithm and Rust backend that Anki Desktop uses.
+    </li>
+    <li>
+      <strong>Free, no ads, no tracking.</strong>
+      No analytics scripts, no premium tier, no upsells.
+      <a href="https://github.com/casualshammy/ankipaper">Open source on GitHub</a>.
+    </li>
+    <li>
+      <strong>Your data is yours.</strong>
+      Decks and notes stay in your AnkiWeb account. {{ brand_name }} only caches
+      what's needed to render cards in your browser.
+    </li>
+  </ul>
+
+  <p class="cta">
+    <a class="btn btn-primary" href="/login">Sign in with AnkiWeb</a>
+  </p>
+
+  <p class="muted">
+    By signing in you accept that your AnkiWeb credentials and deck contents
+    pass through this server. Self-host if that is not acceptable for your
+    threat model — see the
+    <a href="/static/privacy_policy.html">privacy policy</a>.
+  </p>
+{% endblock %}
+
+{% block footer %}
+  <span class="muted">v{{ version }}</span>
+  {% if show_privacy_policy %}
+    <span>| <a href="/static/privacy_policy.html">Privacy Policy</a></span>
+  {% endif %}
+{% endblock %}
+
+{% block structured_data %}
+  <script type="application/ld+json">{{ webapplication_jsonld(request) | safe }}</script>
+{% endblock %}

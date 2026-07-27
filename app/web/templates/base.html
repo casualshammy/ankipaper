@@ -3,13 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}AnkiPaper{% endblock %}</title>
+  <title>{% block title %}{{ brand_name }}{% endblock %}</title>
+  <meta name="description" content="{% block description %}{{ default_description }}{% endblock %}">
+  <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
+  <link rel="canonical" href="{{ canonical_url(request) }}">
+  <meta property="og:site_name" content="{{ brand_name }}">
+  <meta property="og:title" content="{% block og_title %}{{ brand_name }}{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}{{ default_description }}{% endblock %}">
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+  <meta property="og:url" content="{{ canonical_url(request) }}">
+  <meta property="og:image" content="{{ og_image_url(request) }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% block twitter_title %}{{ brand_name }}{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}{{ default_description }}{% endblock %}">
+  <meta name="twitter:image" content="{{ og_image_url(request) }}">
+  {% block structured_data %}{% endblock %}
   <link rel="icon" href="/static/favicon.ico">
   <link rel="stylesheet" href="/static/css/eink.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/"><img class="brand-icon" src="/static/app_icon_256.webp" alt=""><span class="brand-text">{% block brand_text %}AnkiPaper{% endblock %}</span></a>
+    <a class="brand" href="/"><img class="brand-icon" src="/static/app_icon_256.webp" alt="{{ brand_name }} logo"><span class="brand-text">{% block brand_text %}{{ brand_name }}{% endblock %}</span></a>
     <nav class="nav">
       {% block nav %}
         {% if is_filtered and deck_id %}

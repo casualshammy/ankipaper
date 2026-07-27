@@ -100,6 +100,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.show_privacy_policy
     )
 
+    from app.web.seo import canonical_url, og_image_url, webapplication_jsonld
+
+    app.state.templates.env.globals["brand_name"] = settings.brand_name
+    app.state.templates.env.globals["default_description"] = settings.meta_description
+    app.state.templates.env.globals["canonical_url"] = canonical_url
+    app.state.templates.env.globals["og_image_url"] = og_image_url
+    app.state.templates.env.globals["webapplication_jsonld"] = webapplication_jsonld
+
     app.mount(
         "/static",
         StaticFiles(directory=BASE_DIR / "web" / "static"),
@@ -109,12 +117,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.web.routes import auth as auth_routes
     from app.web.routes import home as home_routes
     from app.web.routes import media as media_routes
+    from app.web.routes import seo as seo_routes
     from app.web.routes import study as study_routes
     from app.web.routes import sync as sync_routes
 
     app.include_router(auth_routes.router)
     app.include_router(home_routes.router)
     app.include_router(media_routes.router)
+    app.include_router(seo_routes.router)
     app.include_router(sync_routes.router)
     app.include_router(study_routes.router)
 

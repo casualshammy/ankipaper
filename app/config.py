@@ -101,6 +101,32 @@ class Settings(BaseSettings):
         ),
     )
 
+    public_url: str = Field(
+        default="",
+        description=(
+            "Public origin used in canonical, Open Graph and sitemap URLs "
+            "(for example, https://ankipaper.study). Empty -> the URL is "
+            "derived from the incoming request."
+        ),
+    )
+
+    brand_name: str = Field(
+        default="AnkiPaper",
+        description="Product name surfaced in OG/site_name and brand alt text.",
+    )
+
+    meta_description: str = Field(
+        default=(
+            "AnkiPaper is a free web app that lets you review your Anki "
+            "flashcards in a Kindle or e-ink browser. Sign in with your "
+            "AnkiWeb account — no signup, no install, no tracking."
+        ),
+        description=(
+            "Default meta description and OG/Twitter description used on "
+            "the landing page."
+        ),
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

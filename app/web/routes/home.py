@@ -30,13 +30,17 @@ async def home(
     session: Session = Depends(get_session),
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
-    """Renders the list of decks or redirects to /login."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
+    """Renders the landing page (anonymous) or the list of decks."""
 
     settings = request.app.state.settings
     templates: Jinja2Templates = request.app.state.templates
+
+    if account is None:
+        return templates.TemplateResponse(
+            request,
+            "landing.html",
+            {"version": __version__},
+        )
 
     manager = account.manager
     has_collection = manager.has_collection()
