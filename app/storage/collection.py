@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
@@ -37,6 +38,7 @@ class CollectionManager:
 
         self._lock = asyncio.Lock()
         self._collection: anki.collection.Collection | None = None
+        self._last_access: float = 0.0
         self._path = collection_path
 
     @property
@@ -79,6 +81,7 @@ class CollectionManager:
 
         async with self._lock:
             self._ensure_open()
+            self._last_access = time.monotonic()
             assert self._collection is not None
             return await asyncio.to_thread(fn, self._collection, *args, **kwargs)
 
@@ -92,6 +95,18 @@ class CollectionManager:
                 except Exception:  # noqa: BLE001
                     logger.exception("Failed to close collection")
                 self._collection = None
+                self._last_access = 0.0
+
+    def is_idle(self, threshold_seconds: float) -> bool:
+        """True if the collection is open and has not been accessed
+        within the given number of seconds.
+
+        A closed collection is never idle (there is nothing to close).
+        """
+
+        if self._collection is None:
+            return False
+        return (time.monotonic() - self._last_access) >= threshold_seconds
 
     def _ensure_open(self) -> None:
         """Opens the collection if it is not already open."""

@@ -187,6 +187,12 @@ class AccountStore:
         with self._lock:
             return self._accounts.get(account_id)
 
+    def iter_managers(self) -> list[CollectionManager]:
+        """Snapshot of all currently-loaded managers (taken under lock)."""
+
+        with self._lock:
+            return [a.manager for a in self._accounts.values()]
+
     def ensure(self, account_id: str) -> Account | None:
         """Returns the account by id, loading it from disk if necessary.
 

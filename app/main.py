@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -37,12 +39,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        yield
-        # Close the Redis client used by the login rate limiter so the
-        # connection pool does not leak across worker shutdowns.
+        from app.storage.account import get_account_store
+        from app.storage.eviction import _idle_collection_sweeper
         from app.web.ratelimit import close_redis
 
-        await close_redis()
+        store = get_account_store()
+        sweeper_task = asyncio.create_task(_idle_collection_sweeper(store))
+        try:
+            yield
+        finally:
+            sweeper_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sweeper_task
+
+            await close_redis()
 
     app = FastAPI(
         title="AnkiPaper",
