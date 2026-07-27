@@ -51,7 +51,7 @@ async def login_post(
     request: Request,
     username: str = Form(""),
     password: str = Form(""),
-) -> HTMLResponse:
+) -> HTMLResponse | RedirectResponse:
     """Accepts login/password, performs authentication, sets the cookie."""
 
     templates: Jinja2Templates = request.app.state.templates

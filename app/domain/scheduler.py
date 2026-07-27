@@ -156,42 +156,31 @@ def _queued_card_for(
 def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
     """Returns statistics for all decks (new / learning / review).
 
-    Uses ``get_queued_cards`` for each deck — this gives ready-made counts
-    without manual SQL and without the risk of mixing up ``days_elapsed``,
-    ``queue``/``type``, etc.
+    Uses the backend deck tree so reading the home page does not change
+    ``curDeck``. Selecting every deck before calling ``get_queued_cards``
+    marked the collection as modified and caused ``sync_status`` to report
+    pending changes immediately after a successful sync.
     """
 
-    all_decks = list(col.decks.all_names_and_ids())
+    tree = col._backend.deck_tree(now=int(time.time()))  # type: ignore[attr-defined]
     result: list[DeckStats] = []
 
-    for deck in all_decks:
-        # Hide the built-in Default deck (id == 1) when it has no subdecks
-        # and the collection has at least one other deck.
-        if int(deck.id) == 1 and len(all_decks) > 1 and not col.decks.children(int(deck.id)):
-            continue
-        try:
-            queued = _queued_card_for(col, int(deck.id))
-        except Exception:  # noqa: BLE001
-            new = learning = review = 0
-        else:
-            if queued is None:
-                new = learning = review = 0
-            else:
-                new = int(queued.new_count)
-                learning = int(queued.learning_count)
-                review = int(queued.review_count)
-
-        result.append(
-            DeckStats(
-                deck_id=int(deck.id),
-                name=str(deck.name),
-                new=new,
-                learning=learning,
-                review=review,
-                is_filtered=bool(col.decks.is_filtered(int(deck.id))),
+    def _append_nodes(nodes: list, parent_name: str = "") -> None:
+        for node in nodes:
+            name = f"{parent_name}::{node.name}" if parent_name else str(node.name)
+            result.append(
+                DeckStats(
+                    deck_id=int(node.deck_id),
+                    name=name,
+                    new=int(node.new_count),
+                    learning=int(node.learn_count),
+                    review=int(node.review_count),
+                    is_filtered=bool(node.filtered),
+                )
             )
-        )
+            _append_nodes(node.children, name)
 
+    _append_nodes(tree.children)
     return result
 
 
