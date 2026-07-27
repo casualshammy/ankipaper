@@ -39,6 +39,18 @@ It uses Anki's native collection format, the official AnkiWeb sync protocol, and
 - AnkiWeb credentials and deck data pass through the server. Self-host the application if that is not acceptable for your threat model.
 - There is currently no in-app account deletion flow; remove an account's data directory only with the application stopped and an appropriate backup in place.
 
+## Legal
+
+AnkiPaper is an unofficial third-party client. It is not affiliated with Ankitects Pty Ltd and is not on the list of approved clients in the [AnkiWeb Terms of Service](https://ankiweb.net/account/terms).
+
+The AnkiWeb ToS restricts direct access to the sync service to approved clients (Anki Desktop, AnkiMobile, AnkiDroid, AnkiUniversal). AnkiPaper uses that same sync protocol to talk to AnkiWeb directly, which is outside the approved-clients list. Ankitects have historically tolerated small personal-use clients that only sync their own data and do not add noticeable load, but they may change their policy or suspend accounts at their sole discretion.
+
+Practical implications:
+
+- Your AnkiWeb account may be suspended or terminated by Ankitects for any reason, including the use of AnkiPaper. This is at Ankitects' sole discretion.
+- If Ankitects block AnkiPaper on their servers, the application will stop working. The author will not try to circumvent such a block.
+- Use is at your own risk. Keep a local backup of your collection.
+
 ## Stack
 
 - Python 3.11+ (FastAPI, Jinja2, Uvicorn)
