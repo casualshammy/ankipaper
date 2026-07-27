@@ -170,9 +170,12 @@ input[type="password"] {
   text-align: center;
 }
 
-.btn-primary {
+.btn-primary,
+a.btn-primary,
+a.btn-primary:visited {
   background: #000000;
   color: #ffffff;
+  text-decoration: none;
 }
 
 /* Deck list ------------------------------------------------------------ */

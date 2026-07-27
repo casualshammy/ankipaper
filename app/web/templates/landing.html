@@ -2,6 +2,8 @@
 
 {% block title %}{{ brand_name }} — Review Anki flashcards on a Kindle or e-ink browser{% endblock %}
 
+{% block nav %}{% endblock %}
+
 {% block content %}
   <h1>Review your Anki flashcards on a Kindle or e-ink browser</h1>
 
@@ -10,6 +12,10 @@
     in a server-rendered interface designed for slow monochrome browsers.
     Sign in with your existing AnkiWeb account — no separate signup, no install,
     no premium tier.
+  </p>
+
+  <p class="cta" style="text-align: -webkit-center">
+    <a class="btn btn-primary" href="/login">Sign in with AnkiWeb</a>
   </p>
 
   <h2>What you get</h2>
@@ -38,10 +44,6 @@
       what's needed to render cards in your browser.
     </li>
   </ul>
-
-  <p class="cta">
-    <a class="btn btn-primary" href="/login">Sign in with AnkiWeb</a>
-  </p>
 
   <p class="muted">
     By signing in you accept that your AnkiWeb credentials and deck contents
