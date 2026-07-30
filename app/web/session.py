@@ -1,9 +1,12 @@
 """Cookie sessions: read and write via itsdangerous.
 
 The ``session.secret`` file is created lazily on first access. Until
-then ``_serializer()`` returns ``None``, and ``read_session()`` returns
-"not authenticated". This is intentional: after login the file appears,
-and subsequent requests read sessions correctly.
+then ``make_serializer()`` returns ``None``, and ``read_session()``
+returns "not authenticated". This is intentional: after login the
+file appears, and subsequent requests read sessions correctly.
+
+The same secret is reused (with a different salt) for CSRF token
+signing in :mod:`app.web.csrf` — see :func:`make_serializer`.
 
 In the multi-account version the cookie stores
 ``{"user": "<account_id>"}`` — the id by which :class:`AccountStore`
@@ -20,12 +23,16 @@ from fastapi import Request, Response
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from app.config import get_settings
+from app.storage.secrets import (
+    _load_or_create_fernet_key,
+    read_session_secret_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
 COOKIE_NAME = "ankipaper_session"
 COOKIE_KEY = "user"
-
+COOKIE_SALT = "ankipaper-cookie"
 
 @dataclass(slots=True)
 class Session:
@@ -35,20 +42,20 @@ class Session:
     account_id: str | None = None
 
 
-def _serializer() -> URLSafeSerializer | None:
-    """Returns an itsdangerous serializer, or None if the key has not been created yet."""
+def make_serializer(salt: str) -> URLSafeSerializer | None:
+    """Returns an itsdangerous serializer bound to the session secret, or None.
 
-    from app.storage.secrets import _fernet_key_path
+    The same secret is reused with different salts: ``COOKIE_SALT`` here
+    for cookies, and ``"ankipaper-csrf"`` in :mod:`app.web.csrf` for
+    CSRF tokens. Centralising the load-or-None logic keeps both callers
+    in sync. Returns None before the first login — callers must treat
+    that as "not authenticated".
+    """
 
-    path = _fernet_key_path()
-    if not path.exists():
+    secret = read_session_secret_bytes()
+    if secret is None:
         return None
-    try:
-        secret = path.read_bytes()
-    except OSError as exc:
-        logger.warning("Cannot read session secret: %s", exc)
-        return None
-    return URLSafeSerializer(secret, salt="ankipaper-cookie")
+    return URLSafeSerializer(secret, salt=salt)
 
 
 def _max_age_seconds() -> int:
@@ -66,7 +73,7 @@ def _secure_cookie() -> bool:
 def read_session(request: Request) -> Session:
     """Reads the cookie and returns a Session. Does not fail if the secret is missing."""
 
-    s = _serializer()
+    s = make_serializer(COOKIE_SALT)
     if s is None:
         return Session(is_authenticated=False)
 
@@ -92,17 +99,16 @@ def read_session(request: Request) -> Session:
 def write_session(response: Response, account_id: str) -> None:
     """Sets an authenticated session cookie for the given account.
 
+    Uses :func:`app.storage.secrets._load_or_create_fernet_key` so the
+    secret file is created on first login rather than failing with a
+    missing-key error.
+
     Args:
         response: Response object on which to set the cookie.
         account_id: account identifier (``Account.id``).
     """
 
-    s = _serializer()
-    if s is None:
-        from app.storage.secrets import _load_or_create_fernet_key
-
-        s = URLSafeSerializer(_load_or_create_fernet_key(), salt="ankipaper-cookie")
-
+    s = URLSafeSerializer(_load_or_create_fernet_key(), salt=COOKIE_SALT)
     token = s.dumps({COOKIE_KEY: account_id})
     response.set_cookie(
         key=COOKIE_NAME,

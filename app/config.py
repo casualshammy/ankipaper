@@ -127,7 +127,6 @@ class Settings(BaseSettings):
         ),
     )
 
-
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Returns the singleton Settings instance for the application."""

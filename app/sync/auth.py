@@ -4,32 +4,65 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import contextmanager
+from typing import Generator
 
 import anki.collection
 from anki.errors import BackendError
 from anki.sync_pb2 import SyncAuth
 
-from app.config import get_settings
+from app.sync.endpoints import DEFAULT_ENDPOINT
 
-DEFAULT_ENDPOINT = "https://sync.ankiweb.net/"
+# Lower-case substrings used to classify ``BackendError`` messages.
+AUTH_ERROR_MARKERS: tuple[str, ...] = (
+    "auth",
+    "invalid",
+    "credential",
+    "incorrect",
+    "email",
+    "password",
+    "token",
+    "expired",
+    "expire",
+    "unauthorized",
+)
+
+NETWORK_ERROR_MARKERS: tuple[str, ...] = (
+    "timeout",
+    "connection",
+    "dns",
+    "unreachable",
+    "refused",
+)
 
 
 class AuthError(RuntimeError):
     """AnkiWeb authentication error (invalid credentials, network issues, etc.)."""
 
-def _open_temp_collection() -> tuple[anki.collection.Collection, str]:
-    """Opens a temporary collection for sync_login.
+
+@contextmanager
+def _temp_collection() -> Generator[anki.collection.Collection, None, None]:
+    """Yields a temporary ``Collection`` for ``sync_login``.
 
     anki 26.x does not support ``:memory:`` directly (``os.path.abspath``
-    breaks the alias), so we create a real temporary file.
-
-    Returns:
-        tuple of (open collection, path to the temporary file).
+    breaks the alias), so we create a real temporary file that is removed
+    when the context exits.
     """
 
     fd, path = tempfile.mkstemp(prefix="ankipaper-login-", suffix=".anki21")
     os.close(fd)
-    return anki.collection.Collection(path), path
+    col = anki.collection.Collection(path)
+    try:
+        yield col
+    finally:
+        try:
+            col.close()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 def login(username: str, password: str) -> str:
@@ -46,22 +79,13 @@ def login(username: str, password: str) -> str:
     if not username or not password:
         raise AuthError("Username and password are required")
 
-    col, tmp_path = _open_temp_collection()
-    try:
-        auth: SyncAuth = col.sync_login(username, password, DEFAULT_ENDPOINT)
-    except BackendError as exc:
-        raise AuthError(_translate_backend_error(exc)) from exc
-    except Exception as exc:
-        raise AuthError(f"Network error: {exc}") from exc
-    finally:
+    with _temp_collection() as col:
         try:
-            col.close()
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+            auth: SyncAuth = col.sync_login(username, password, DEFAULT_ENDPOINT)
+        except BackendError as exc:
+            raise AuthError(_translate_backend_error(exc)) from exc
+        except Exception as exc:
+            raise AuthError(f"Network error: {exc}") from exc
 
     if not auth.hkey:
         raise AuthError("AnkiWeb returned an empty hostKey")
@@ -70,39 +94,35 @@ def login(username: str, password: str) -> str:
 
 
 def make_auth(host_key: str, endpoint: str | None = None) -> SyncAuth:
-    """Builds a SyncAuth from a previously obtained hostKey.
+    """Builds a ``SyncAuth`` from a previously obtained hostKey.
 
     Args:
         host_key: hostKey obtained at login.
-        endpoint: URL of a specific sync server (``sync20.ankiweb.net`` etc.).
-            If ``None`` — uses ``_endpoint()`` from settings.
+        endpoint: URL of the sync server (``sync20.ankiweb.net`` etc.).
+            ``None`` falls back to :data:`app.sync.endpoints.DEFAULT_ENDPOINT`.
     """
 
     return SyncAuth(hkey=host_key, endpoint=endpoint or DEFAULT_ENDPOINT)
 
 
-def _translate_backend_error(exc: BackendError) -> str:
-    """Converts a BackendError into a human-readable message."""
+def is_auth_error(exc: BackendError) -> bool:
+    """True if the ``BackendError`` indicates an expired/invalid hostKey.
+
+    Used by :mod:`app.sync.client` to distinguish auth-failures (which
+    should clear the stored hostKey and force re-login) from other sync
+    errors that may be transient.
+    """
 
     message = str(exc).lower()
+    return any(marker in message for marker in AUTH_ERROR_MARKERS)
 
-    auth_markers = (
-        "auth",
-        "invalid",
-        "credential",
-        "incorrect",
-        "email",
-        "password",
-        "token",
-        "expired",
-        "expire",
-        "unauthorized",
-    )
-    if any(marker in message for marker in auth_markers):
+
+def _translate_backend_error(exc: BackendError) -> str:
+    """Converts a ``BackendError`` into a human-readable message."""
+
+    message = str(exc).lower()
+    if any(marker in message for marker in AUTH_ERROR_MARKERS):
         return "Invalid AnkiWeb username or password"
-
-    network_markers = ("timeout", "connection", "dns", "unreachable", "refused")
-    if any(marker in message for marker in network_markers):
+    if any(marker in message for marker in NETWORK_ERROR_MARKERS):
         return "Could not reach AnkiWeb, please try again"
-
     return f"AnkiWeb error: {exc}"

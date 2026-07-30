@@ -59,6 +59,30 @@ def _load_or_create_fernet_key() -> bytes:
     return key
 
 
+def read_session_secret_bytes() -> bytes | None:
+    """Returns the session secret bytes (stripped), or None.
+
+    The session secret is the same key reused for two purposes: signing
+    session cookies (``app.web.session``) and signing CSRF tokens
+    (``app.web.csrf``). Sharing this helper keeps the "no secret yet"
+    and I/O-error handling in one place. Returns None before the first
+    login (no file on disk) or if the file cannot be read — callers
+    must treat None as "not authenticated".
+
+    ``.strip()`` is applied because the key is later used as HMAC
+    material and a stray trailing newline would change the digest.
+    """
+
+    path = _fernet_key_path()
+    if not path.exists():
+        return None
+    try:
+        return path.read_bytes().strip()
+    except OSError as exc:
+        logger.warning("Cannot read session secret: %s", exc)
+        return None
+
+
 def _fernet() -> Fernet | None:
     """Returns a Fernet instance, or None if the key has not been created yet.
 

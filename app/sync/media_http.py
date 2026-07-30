@@ -36,9 +36,10 @@ from typing import Any
 
 import zstandard as zstd
 
+from app.sync.endpoints import normalize_endpoint
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_ENDPOINT = "https://sync.ankiweb.net/"
 SYNC_VERSION = 11
 ORIGINAL_SIZE_HEADER = "anki-original-size"
 SYNC_HEADER_NAME = "anki-sync"
@@ -59,13 +60,6 @@ SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
         ".otf", ".ttf", ".woff", ".woff2",
     }
 )
-
-
-def _endpoint(value: str | None) -> str:
-    """Returns the sync endpoint (``sync20.ankiweb.net`` etc.)."""
-
-    return (value or DEFAULT_ENDPOINT).rstrip("/") + "/"
-
 
 def _compress(data: bytes) -> bytes:
     """Compresses ``data`` with zstd (format compatible with the AnkiWeb server)."""
@@ -465,7 +459,7 @@ def sync_media_direct(
         "endpoint": "...", "collection_too_large": bool}``.
     """
 
-    base = _endpoint(endpoint)
+    base = normalize_endpoint(endpoint)
     media_dir = _media_dir(data_dir)
     # A single session_key for the whole session — AnkiWeb tracks state
     # by it. See ``_anki_repo/rslib/src/sync/http_client/mod.rs:41``.

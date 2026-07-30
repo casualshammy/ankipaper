@@ -10,7 +10,7 @@ from anki import sync_pb2
 from anki.collection import Collection
 from anki.errors import BackendError
 
-from app.sync.auth import make_auth
+from app.sync.auth import is_auth_error, make_auth
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) ->
     try:
         status = col.sync_status(auth)
     except BackendError as exc:
-        if _is_auth_error(exc):
+        if is_auth_error(exc):
             raise AuthExpiredError(
                 "AnkiWeb rejected the stored hostKey, please sign in again"
             ) from exc
@@ -105,7 +105,7 @@ def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) ->
         # synced separately via ``SyncMediaWorker.start()``.
         result = col.sync_collection(auth=auth, sync_media=False)
     except BackendError as exc:
-        if _is_auth_error(exc):
+        if is_auth_error(exc):
             raise AuthExpiredError(
                 "AnkiWeb rejected the stored hostKey, please sign in again"
             ) from exc
@@ -239,7 +239,7 @@ def _do_full_sync(
             col.reopen(after_full_sync=True)
         except Exception:  # noqa: BLE001
             logger.warning("col.reopen after failed full %s failed; continuing", label)
-        if _is_auth_error(exc):
+        if is_auth_error(exc):
             raise AuthExpiredError(
                 "AnkiWeb rejected the stored hostKey, please sign in again"
             ) from exc
@@ -278,20 +278,3 @@ def try_sync(
             error=str(exc),
             auth_expired=False,
         )
-
-
-def _is_auth_error(exc: BackendError) -> bool:
-    """True if the BackendError indicates an expired hostKey."""
-
-    message = str(exc).lower()
-    markers = (
-        "auth",
-        "invalid",
-        "credential",
-        "token",
-        "expired",
-        "expire",
-        "incorrect",
-        "unauthorized",
-    )
-    return any(marker in message for marker in markers)

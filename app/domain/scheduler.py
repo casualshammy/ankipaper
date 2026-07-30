@@ -16,9 +16,10 @@ from enum import IntEnum
 import anki.collection
 import anki.errors
 import anki.scheduler_pb2 as sp
+from anki.cards import CardId
+from anki.decks import DeckId
 
 logger = logging.getLogger(__name__)
-
 
 class Rating(IntEnum):
     """Anki's 4-button answer scale."""
@@ -146,7 +147,7 @@ def _queued_card_for(
 ) -> sp.QueuedCards | None:
     """Returns queued cards for the deck, or None if the deck is not selected."""
 
-    col.decks.select(int(deck_id))
+    col.decks.select(DeckId(deck_id))
     return col._backend.get_queued_cards(  # type: ignore[attr-defined]
         fetch_limit=1,
         intraday_learning_only=False,
@@ -165,7 +166,7 @@ def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
     tree = col._backend.deck_tree(now=int(time.time()))  # type: ignore[attr-defined]
     result: list[DeckStats] = []
 
-    def _append_nodes(nodes: list, parent_name: str = "") -> None:
+    def _append_nodes(nodes, parent_name: str = "") -> None:
         for node in nodes:
             name = f"{parent_name}::{node.name}" if parent_name else str(node.name)
             result.append(
@@ -253,10 +254,10 @@ def set_card_flag(
     if not 0 <= flag <= 4:
         raise ValueError(f"invalid flag: {flag!r}")
     try:
-        col.get_card(card_id)
+        col.get_card(CardId(card_id))
     except anki.errors.NotFoundError as e:
         raise ValueError(f"card not found: {card_id}") from e
-    result = col.set_user_flag_for_cards(flag, [card_id])
+    result = col.set_user_flag_for_cards(flag, [CardId(card_id)])
     return int(result.count)
 
 
@@ -280,7 +281,7 @@ def set_card_marked(
     """
 
     try:
-        card = col.get_card(card_id)
+        card = col.get_card(CardId(card_id))
     except anki.errors.NotFoundError as e:
         raise ValueError(f"card not found: {card_id}") from e
     note = card.note()
@@ -352,7 +353,7 @@ def get_card_view(
             front page.
     """
 
-    if not col.get_card(card_id):
+    if not col.get_card(CardId(card_id)):
         return None
     return _load_card_view(col, card_id, card_type, intervals)
 
@@ -389,7 +390,7 @@ def answer_card(
 
     if new_state is None or current_state is None:
         if deck_id is None:
-            card = col.get_card(card_id)
+            card = col.get_card(CardId(card_id))
             deck_id = int(card.did)
         queued = _queued_card_for(col, int(deck_id))
         head = queued.cards[0] if queued and queued.cards else None
@@ -431,7 +432,7 @@ def answer_card(
             card_id=int(card_id),
             current_state=current_state,
             new_state=new_state,
-            rating=int(rating),
+            rating=int(rating),  # type: ignore[arg-type]
             answered_at_millis=int(time.time() * 1000),
             milliseconds_taken=0,
         )
@@ -444,7 +445,7 @@ def answer_card(
     # lives in a child, then switching to ``card.did`` after the answer
     # narrows the queue to the child only — there may be no due cards
     # there even though there are some in the parent.
-    next_deck_id = int(deck_id) if deck_id is not None else int(col.get_card(card_id).did)
+    next_deck_id = int(deck_id) if deck_id is not None else int(col.get_card(CardId(card_id)).did)
     queued = _queued_card_for(col, next_deck_id)
     next_cid: int | None = None
     if queued is not None and queued.cards:
@@ -486,7 +487,7 @@ def _load_card_view(
             template will show ``"—"`` on the back page.
     """
 
-    card = col.get_card(card_id)
+    card = col.get_card(CardId(card_id))
     note = card.note()
     notetype = card.note_type()
 
@@ -511,7 +512,7 @@ def _load_card_view(
     )
 
 
-def _normal_to_card_type(normal: sp.Normal) -> str:
+def _normal_to_card_type(normal: sp.SchedulingState.Normal) -> str:
     """Converts ``SchedulingState.Normal`` to a user-facing type.
 
     ``Normal`` is a nested ``oneof`` variant of ``SchedulingState`` and

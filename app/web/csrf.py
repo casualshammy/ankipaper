@@ -26,7 +26,7 @@ from fastapi import Depends, HTTPException, Request, status
 from itsdangerous import BadSignature, URLSafeSerializer
 
 from app.web.deps import get_session
-from app.web.session import Session
+from app.web.session import Session, make_serializer, read_session
 
 logger = logging.getLogger(__name__)
 
@@ -34,21 +34,11 @@ logger = logging.getLogger(__name__)
 def _csrf_serializer() -> URLSafeSerializer | None:
     """Returns an itsdangerous serializer for CSRF tokens, or None.
 
-    Mirrors :func:`app.web.session._serializer` but uses a dedicated
+    Reuses :func:`app.web.session.make_serializer` with a dedicated
     salt so cookie tokens and CSRF tokens are not interchangeable.
     """
 
-    from app.storage.secrets import _fernet_key_path
-
-    path = _fernet_key_path()
-    if not path.exists():
-        return None
-    try:
-        secret = path.read_bytes()
-    except OSError as exc:
-        logger.warning("Cannot read session secret for CSRF: %s", exc)
-        return None
-    return URLSafeSerializer(secret, salt="ankipaper-csrf")
+    return make_serializer("ankipaper-csrf")
 
 
 def make_csrf_token(sid: str) -> str:
@@ -126,8 +116,6 @@ def csrf_token(request: Request) -> str:
     render ``<input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">``
     without each route having to thread the value through its context.
     """
-
-    from app.web.session import read_session
 
     session = read_session(request)
     return make_csrf_token(session.account_id or "")
