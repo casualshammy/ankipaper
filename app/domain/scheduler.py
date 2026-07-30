@@ -659,6 +659,9 @@ def _sanitize_for_eink(html: str) -> str:
       a security hole).
     - Removes ``<audio>``, ``<video>``, ``<source>``, ``<iframe>``,
       ``<object>``, ``<embed>``, ``<canvas>`` — Kindle cannot play them.
+    - Removes Anki's audio/video playback markers (``[anki:play:a:0]``,
+      ``[anki:pause:a:0]``, ``[anki:play:v:0]``) and the legacy
+      ``[sound:filename.mp3]`` shorthand.
     - Rewrites ``<img src="filename">`` → ``<img src="/ms/filename">``, so
       that images are loaded through our media route
       (``app/web/routes/media.py``). Anki stores files in
@@ -691,6 +694,18 @@ def _sanitize_for_eink(html: str) -> str:
             html,
             flags=re.IGNORECASE,
         )
+
+    # Strip Anki playback markers: [anki:play:a:0], [anki:pause:v:1] and the legacy [sound:foo.mp3]. 
+    html = re.sub(
+        r"\[anki:(?:play|pause):[^\]]*\]",
+        "",
+        html,
+    )
+    html = re.sub(
+        r"\[sound:[^\]]*\]",
+        "",
+        html,
+    )
 
     # <img src="filename"> → <img src="/ms/filename">. Only touch the src
     # attribute; keep the rest (alt, style, width, height) intact.
