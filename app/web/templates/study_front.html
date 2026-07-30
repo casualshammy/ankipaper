@@ -23,7 +23,7 @@
       <input type="hidden" name="hard_interval" value="{{ card.intervals.hard if card.intervals else '—' }}">
       <input type="hidden" name="good_interval" value="{{ card.intervals.good if card.intervals else '—' }}">
       <input type="hidden" name="easy_interval" value="{{ card.intervals.easy if card.intervals else '—' }}">
-      <button type="submit" name="reveal" value="1" class="btn btn-primary">Show answer</button>
+      <button type="submit" name="reveal" value="1" class="btn btn-primary" autofocus>Show answer</button>
     </form>
   </div>
 {% endblock %}
