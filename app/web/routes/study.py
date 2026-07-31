@@ -16,8 +16,10 @@ from app.domain.scheduler import (
     get_card_view,
     get_deck_due_breakdown,
     get_next_card,
+    get_undo_status,
     set_card_flag,
     set_card_marked,
+    undo_last_op,
 )
 from app.storage.account import Account
 from app.sync.client import try_sync
@@ -39,6 +41,7 @@ async def _session_done(
     synced, sync_err, attempted = await _auto_sync_if_possible(account)
     templates: Jinja2Templates = request.app.state.templates
     is_filtered = await account.manager.run(_deck_is_filtered, deck_id)
+    undo = await account.manager.run(get_undo_status)
     return templates.TemplateResponse(
         request,
         "study_done.html",
@@ -54,6 +57,7 @@ async def _session_done(
             "synced": synced,
             "sync_error": sync_err,
             "sync_attempted": attempted,
+            "undo": undo,
         },
     )
 
@@ -95,6 +99,7 @@ async def study_get(
 
     breakdown = await manager.run(get_deck_due_breakdown, deck_id)
     is_filtered = await manager.run(_deck_is_filtered, deck_id)
+    undo = await manager.run(get_undo_status)
     return templates.TemplateResponse(
         request,
         "study_front.html",
@@ -108,6 +113,7 @@ async def study_get(
             "remaining_new": breakdown.new,
             "remaining_learning": breakdown.learning,
             "remaining_review": breakdown.review,
+            "undo": undo,
         },
     )
 
@@ -194,6 +200,21 @@ async def study_post(
             return await _session_done(request, account, deck_id)
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
+    return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+
+
+@router.post("/deck/{deck_id}/undo", response_model=None)
+async def undo_post(
+    deck_id: int,
+    account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
+) -> RedirectResponse:
+    """Undo the last review action and return to the study page."""
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+
+    await account.manager.run(undo_last_op)
     return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
 

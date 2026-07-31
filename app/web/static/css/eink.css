@@ -142,7 +142,13 @@ input[type="password"] {
   gap: 8px;
 }
 
-.actions-row { margin: 16px 0; }
+.actions-row {
+  margin: 16px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
 
 /* Split actions (for example, "Back to decks" on the left and "Show answer"
    on the right on the same row on the review page). */
@@ -176,6 +182,20 @@ a.btn-primary:visited {
   background: #000000;
   color: #ffffff;
   text-decoration: none;
+}
+
+.btn[disabled],
+.btn:disabled {
+  border-color: #888888;
+  color: #888888;
+  background: #ffffff;
+  cursor: not-allowed;
+}
+
+.actions-undo {
+  margin: 8px 0 16px 0;
+  display: flex;
+  justify-content: flex-start;
 }
 
 /* Deck list ------------------------------------------------------------ */

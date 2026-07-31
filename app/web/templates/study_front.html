@@ -26,4 +26,13 @@
       <button type="submit" name="reveal" value="1" class="btn btn-primary" autofocus>Show answer</button>
     </form>
   </div>
+
+  <div class="actions-undo">
+    <form method="post" action="/deck/{{ deck_id }}/undo" class="form form-inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <button type="submit" class="btn" {% if not undo.can_undo %}disabled{% endif %} aria-label="Undo">
+        Undo{% if undo.label %} {{ undo.label | lower }}{% endif %}
+      </button>
+    </form>
+  </div>
 {% endblock %}

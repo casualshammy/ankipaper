@@ -18,6 +18,7 @@ import anki.errors
 import anki.scheduler_pb2 as sp
 from anki.cards import CardId
 from anki.decks import DeckId
+from anki.errors import UndoEmpty
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,40 @@ class AnswerOutcome:
     next_card_id: int | None
     next_interval: NextInterval | None
     stale: bool = False
+
+@dataclass(slots=True)
+class UndoInfo:
+    """Snapshot of the collection's undo stack."""
+
+    label: str | None
+    """Localised name of the undoable operation, or ``None`` when the stack is empty."""
+    can_undo: bool
+    """``True`` if there is an op that can be reverted."""
+    can_redo: bool
+    """``True`` if a previously undone op can be reapplied."""
+
+
+def get_undo_status(col: anki.collection.Collection) -> UndoInfo:
+    """Return the current undo-stack state."""
+
+    status = col.undo_status()
+    label = status.undo or None
+    return UndoInfo(
+        label=label,
+        can_undo=bool(status.undo),
+        can_redo=bool(status.redo),
+    )
+
+
+def undo_last_op(col: anki.collection.Collection) -> bool:
+    """Undo the last operation."""
+
+    try:
+        col.undo()
+        return True
+    except UndoEmpty:
+        # undo stack empty
+        return False
 
 
 def _queued_card_for(
