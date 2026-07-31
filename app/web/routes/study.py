@@ -181,6 +181,15 @@ async def study_post(
             return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
         outcome = await manager.run(answer_card, card_id_int, rating, deck_id=deck_id)
+        if outcome.stale:
+            logger.info(
+                "study_post: stale answer card_id=%s deck_id=%s rating=%s; "
+                "redirecting to current head",
+                card_id_int,
+                deck_id,
+                int(rating),
+            )
+            return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
         if outcome.next_card_id is None:
             return await _session_done(request, account, deck_id)
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)

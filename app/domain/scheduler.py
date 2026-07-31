@@ -139,6 +139,7 @@ class AnswerOutcome:
 
     next_card_id: int | None
     next_interval: NextInterval | None
+    stale: bool = False
 
 
 def _queued_card_for(
@@ -427,16 +428,32 @@ def answer_card(
                 Rating.EASY: states.easy,
             }[rating]
 
-    backend.answer_card(
-        sp.CardAnswer(
-            card_id=int(card_id),
-            current_state=current_state,
-            new_state=new_state,
-            rating=int(rating),  # type: ignore[arg-type]
-            answered_at_millis=int(time.time() * 1000),
-            milliseconds_taken=0,
+    try:
+        backend.answer_card(
+            sp.CardAnswer(
+                card_id=int(card_id),
+                current_state=current_state,
+                new_state=new_state,
+                rating=int(rating),  # type: ignore[arg-type]
+                answered_at_millis=int(time.time() * 1000),
+                milliseconds_taken=0,
+            )
         )
-    )
+    except anki.errors.InvalidInput as exc:
+        if "not at top of queue" in str(exc):
+            logger.warning(
+                "answer_card: discarded stale/duplicate answer card_id=%s deck_id=%s rating=%s (err=%s)",
+                card_id,
+                deck_id,
+                int(rating),
+                exc,
+            )
+            return AnswerOutcome(
+                next_card_id=None,
+                next_interval=None,
+                stale=True,
+            )
+        raise
 
     # IMPORTANT: when looking for the next card we use the ORIGINAL deck
     # (the one passed by the caller), not ``card.did``. ``card.did`` is the
