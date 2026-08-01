@@ -17,6 +17,8 @@ from fastapi.templating import Jinja2Templates
 from app import __version__
 from app.config import Settings, get_settings
 from app.web.ratelimit import client_ip
+from app.storage.account import get_account_store
+from app.web.session import read_session
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,7 +41,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        from app.storage.account import get_account_store
         from app.storage.eviction import _idle_collection_sweeper
         from app.web.ratelimit import close_redis
 
@@ -76,9 +77,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         duration_ms = (time.monotonic() - start) * 1000.0
         ip = client_ip(request, settings)
         query = f"?{request.url.query}" if request.url.query else ""
+        user = "-"
+        session = read_session(request)
+        if session.is_authenticated and session.account_id is not None:
+            user = session.account_id
         logger.info(
-            '%s - "%s %s%s" %d %.2fms',
+            '%s [%s] - "%s %s%s" %d %.2fms',
             ip,
+            user,
             request.method,
             request.url.path,
             query,
