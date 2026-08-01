@@ -39,8 +39,14 @@
     {% if is_filtered %}
       <form method="post" action="/deck/{{ deck_id }}/rebuild" class="form form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-        <button type="submit" class="btn">Rebuild</button>
+        <button type="submit" class="btn">Rebuild deck</button>
       </form>
+      {% if has_cards %}
+        <form method="post" action="/deck/{{ deck_id }}/empty" class="form form-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <button type="submit" class="btn">Empty deck</button>
+        </form>
+      {% endif %}
     {% endif %}
   </div>
 

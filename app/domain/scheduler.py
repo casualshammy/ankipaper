@@ -268,6 +268,51 @@ def rebuild_filtered_deck(
     return int(result.count)
 
 
+def get_deck_card_count(
+    col: anki.collection.Collection,
+    deck_id: int,
+) -> int:
+    """Total cards currently in the deck (no children, no limits applied)."""
+
+    tree = col._backend.deck_tree(now=int(time.time()))  # type: ignore[attr-defined]
+
+    def _find(nodes) -> int | None:
+        for node in nodes:
+            if int(node.deck_id) == int(deck_id):
+                return int(node.total_in_deck)
+            found = _find(node.children)
+            if found is not None:
+                return found
+        return None
+
+    found = _find(tree.children)
+    return 0 if found is None else found
+
+
+def empty_filtered_deck(
+    col: anki.collection.Collection,
+    deck_id: int,
+) -> int:
+    """Returns all cards from a filtered deck to their home decks.
+
+    Args:
+        col: open collection.
+        deck_id: id of the filtered deck.
+
+    Returns:
+        Number of cards that were returned to their home decks.
+
+    Raises:
+        ValueError: if the deck is not a filtered (cram) deck.
+    """
+
+    if not col.decks.is_filtered(DeckId(deck_id)):
+        raise ValueError(f"deck {deck_id} is not a filtered deck")
+    count = get_deck_card_count(col, deck_id)
+    col._backend.empty_filtered_deck(int(deck_id))  # type: ignore[attr-defined]
+    return count
+
+
 def set_card_flag(
     col: anki.collection.Collection,
     card_id: int,

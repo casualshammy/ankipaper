@@ -46,6 +46,12 @@
   {% if rebuild_error %}
     <p class="error">Rebuild error: {{ rebuild_error }}</p>
   {% endif %}
+  {% if empty_ok is not none %}
+    <p class="notice">Deck emptied. {{ empty_ok }} card(s) returned to their home decks.</p>
+  {% endif %}
+  {% if empty_error %}
+    <p class="error">Empty error: {{ empty_error }}</p>
+  {% endif %}
 
   {% if not has_collection %}
     <p class="notice">

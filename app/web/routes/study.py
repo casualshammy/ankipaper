@@ -14,6 +14,7 @@ from app.domain.scheduler import (
     Rating,
     answer_card,
     get_card_view,
+    get_deck_card_count,
     get_deck_due_breakdown,
     get_next_card,
     get_undo_status,
@@ -41,6 +42,7 @@ async def _session_done(
     synced, sync_err, attempted = await _auto_sync_if_possible(account)
     templates: Jinja2Templates = request.app.state.templates
     is_filtered = await account.manager.run(_deck_is_filtered, deck_id)
+    has_cards = bool(await account.manager.run(get_deck_card_count, deck_id))
     undo = await account.manager.run(get_undo_status)
     return templates.TemplateResponse(
         request,
@@ -50,6 +52,7 @@ async def _session_done(
             "account": account,
             "deck_id": deck_id,
             "is_filtered": is_filtered,
+            "has_cards": has_cards,
             "remaining": 0,
             "remaining_new": 0,
             "remaining_learning": 0,
@@ -99,6 +102,7 @@ async def study_get(
 
     breakdown = await manager.run(get_deck_due_breakdown, deck_id)
     is_filtered = await manager.run(_deck_is_filtered, deck_id)
+    has_cards = bool(await manager.run(get_deck_card_count, deck_id))
     undo = await manager.run(get_undo_status)
     return templates.TemplateResponse(
         request,
@@ -108,6 +112,7 @@ async def study_get(
             "account": account,
             "deck_id": deck_id,
             "is_filtered": is_filtered,
+            "has_cards": has_cards,
             "card": view,
             "remaining": breakdown.total,
             "remaining_new": breakdown.new,

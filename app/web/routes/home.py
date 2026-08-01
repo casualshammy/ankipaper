@@ -9,7 +9,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app import __version__
-from app.domain.scheduler import list_deck_stats, rebuild_filtered_deck
+from app.domain.scheduler import (
+    empty_filtered_deck,
+    list_deck_stats,
+    rebuild_filtered_deck,
+)
 from app.storage.account import Account
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional, get_session
@@ -27,6 +31,8 @@ async def home(
     sync_error: str | None = None,
     rebuild_ok: int | None = None,
     rebuild_error: str | None = None,
+    empty_ok: int | None = None,
+    empty_error: str | None = None,
     session: Session = Depends(get_session),
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
@@ -66,6 +72,8 @@ async def home(
             "sync_error": sync_error,
             "rebuild_ok": rebuild_ok,
             "rebuild_error": rebuild_error,
+            "empty_ok": empty_ok,
+            "empty_error": empty_error,
             "media_collection_too_large": account.sync_state.media_collection_too_large,
             "media_max_collection_bytes": settings.media_max_collection_bytes,
         },
@@ -92,3 +100,23 @@ async def deck_rebuild_post(
         )
     logger.info("rebuild_filtered_deck: deck_id=%s count=%s", deck_id, count)
     return RedirectResponse(f"/?rebuild_ok={count}", status_code=303)
+
+
+@router.post("/deck/{deck_id}/empty", response_model=None)
+async def deck_empty_post(
+    deck_id: int,
+    account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
+) -> RedirectResponse:
+    """Returns all cards from a filtered deck to their home decks."""
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+
+    try:
+        count = await account.manager.run(empty_filtered_deck, deck_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("empty_filtered_deck failed: deck_id=%s err=%s", deck_id, exc)
+        return RedirectResponse(f"/?empty_error={exc}", status_code=303)
+    logger.info("empty_filtered_deck: deck_id=%s count=%s", deck_id, count)
+    return RedirectResponse(f"/?empty_ok={count}", status_code=303)
