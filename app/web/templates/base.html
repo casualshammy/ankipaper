@@ -36,10 +36,6 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
           <button type="submit" id="sync-btn" class="btn">Sync</button>
         </form>
-        <form method="post" action="/logout" class="nav-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-          <button type="submit" class="btn">Logout</button>
-        </form>
       {% endblock %}
     </nav>
   </header>
