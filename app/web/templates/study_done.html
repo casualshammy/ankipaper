@@ -23,11 +23,19 @@
 
   <p class="actions-row">
     <a class="btn" href="/">Back to decks</a>
-    <form method="post" action="/deck/{{ deck_id }}/undo" class="form form-inline">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-      <button type="submit" class="btn" {% if not undo.can_undo %}disabled{% endif %} aria-label="Undo">
-        Undo{% if undo.label %} {{ undo.label | lower }}{% endif %}
-      </button>
-    </form>
+    {% if undo.can_undo %}
+      <form method="post" action="/deck/{{ deck_id }}/undo" class="form form-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <button type="submit" class="btn" aria-label="Undo">
+          Undo{% if undo.label %} {{ undo.label | lower }}{% endif %}
+        </button>
+      </form>
+    {% endif %}
+    {% if is_filtered %}
+      <form method="post" action="/deck/{{ deck_id }}/rebuild" class="form form-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <button type="submit" class="btn">Rebuild</button>
+      </form>
+    {% endif %}
   </p>
 {% endblock %}

@@ -26,12 +26,6 @@
     <a class="brand" href="/"><img class="brand-icon" src="/static/app_icon_256.webp" alt="{{ brand_name }} logo"><span class="brand-text">{% block brand_text %}{{ brand_name }}{% endblock %}</span></a>
     <nav class="nav">
       {% block nav %}
-        {% if is_filtered and deck_id %}
-          <form method="post" action="/deck/{{ deck_id }}/rebuild" class="nav-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-            <button type="submit" class="btn">Rebuild</button>
-          </form>
-        {% endif %}
         <form method="post" action="/sync" class="nav-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
           <button type="submit" id="sync-btn" class="btn">Sync</button>
