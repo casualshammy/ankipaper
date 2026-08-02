@@ -143,9 +143,10 @@ input[type="password"] {
 }
 
 .actions-row {
-  margin: 16px 0;
+  margin: 48px 0 16px 0;
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
   align-items: center;
 }
@@ -182,15 +183,6 @@ a.btn-primary:visited {
   background: #000000;
   color: #ffffff;
   text-decoration: none;
-}
-
-.actions-undo {
-  margin: 8px 0 16px 0;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 /* Deck list ------------------------------------------------------------ */
