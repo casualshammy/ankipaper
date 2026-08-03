@@ -57,4 +57,10 @@ async def serve_media(
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Media not found")
 
-    return FileResponse(file_path)
+    return FileResponse(
+        file_path,
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Vary": "Cookie",
+        },
+    )

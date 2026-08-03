@@ -11,13 +11,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import __version__
 from app.config import Settings, get_settings
-from app.web.ratelimit import client_ip
 from app.storage.account import get_account_store
+from app.web.ratelimit import client_ip
 from app.web.session import read_session
 
 logging.basicConfig(
@@ -114,16 +113,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates.env.globals["og_image_url"] = og_image_url
     app.state.templates.env.globals["webapplication_jsonld"] = webapplication_jsonld
 
-    app.mount(
-        "/static",
-        StaticFiles(directory=BASE_DIR / "web" / "static"),
-        name="static",
-    )
-
     from app.web.routes import auth as auth_routes
     from app.web.routes import home as home_routes
     from app.web.routes import media as media_routes
     from app.web.routes import seo as seo_routes
+    from app.web.routes import static as static_routes
     from app.web.routes import study as study_routes
     from app.web.routes import sync as sync_routes
 
@@ -131,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(home_routes.router)
     app.include_router(media_routes.router)
     app.include_router(seo_routes.router)
+    app.include_router(static_routes.router)
     app.include_router(sync_routes.router)
     app.include_router(study_routes.router)
 
