@@ -36,10 +36,14 @@ async def _session_done(
     request: Request,
     account: Account,
     deck_id: int,
+    attempt_sync: bool = True,
 ) -> HTMLResponse:
-    """Renders the session-complete page with an auto-sync."""
+    """Renders the session-complete page with an optional auto-sync."""
 
-    synced, sync_err, attempted = await _auto_sync_if_possible(account)
+    if attempt_sync:
+        synced, sync_err, attempted = await _auto_sync_if_possible(account)
+    else:
+        synced, sync_err, attempted = False, None, False
     templates: Jinja2Templates = request.app.state.templates
     is_filtered = await account.manager.run(_deck_is_filtered, deck_id)
     has_cards = bool(await account.manager.run(get_deck_card_count, deck_id))
@@ -98,7 +102,7 @@ async def study_get(
 
     view = await manager.run(get_next_card, deck_id)
     if view is None:
-        return await _session_done(request, account, deck_id)
+        return await _session_done(request, account, deck_id, attempt_sync=False)
 
     breakdown = await manager.run(get_deck_due_breakdown, deck_id)
     is_filtered = await manager.run(_deck_is_filtered, deck_id)
