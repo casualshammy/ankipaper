@@ -71,9 +71,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Replace uvicorn's built-in access log
     @app.middleware("http")
     async def access_log_middleware(request: Request, call_next):
-        start = time.monotonic()
-        response = await call_next(request)
-        duration_ms = (time.monotonic() - start) * 1000.0
         ip = client_ip(request, settings)
         query = f"?{request.url.query}" if request.url.query else ""
         user = "-"
@@ -81,7 +78,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if session.is_authenticated and session.account_id is not None:
             user = session.account_id
         logger.info(
-            '%s [%s] - "%s %s%s" %d %.2fms',
+            '%s [%s] ->> "%s %s%s"',
+            ip,
+            user,
+            request.method,
+            request.url.path,
+            query,
+        )
+
+        start = time.monotonic()
+        response = await call_next(request)
+        duration_ms = (time.monotonic() - start) * 1000.0
+        
+        logger.info(
+            '%s [%s] <<- "%s %s%s" %d %.2fms',
             ip,
             user,
             request.method,
