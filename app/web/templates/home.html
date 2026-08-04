@@ -94,8 +94,6 @@
 {% endblock %}
 
 {% block scripts %}
-  {# Media-sync status polling is only needed on the home page: POST /sync
-     redirects here, and the progress indicator is visible on the Sync button. #}
   <script>
     (function () {
       var btn = document.getElementById('sync-btn');

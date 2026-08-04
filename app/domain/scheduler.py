@@ -12,6 +12,7 @@ import re
 import time
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Iterable, Iterator
 
 import anki.collection
 import anki.errors
@@ -21,6 +22,35 @@ from anki.decks import DeckId
 from anki.errors import UndoEmpty
 
 logger = logging.getLogger(__name__)
+
+# Anki user flags: 0 = none, 1 = red, 2 = orange, 3 = green, 4 = blue.
+_FLAG_LABELS: dict[int, str] = {
+    0: "none",
+    1: "red",
+    2: "yellow",
+    3: "green",
+    4: "blue",
+}
+
+# Card-type keys, in priority order used by ``_normal_to_card_type``.
+# New / review / relearning / learning is also the order of fields on
+# ``SchedulingState.Normal`` (see scheduler.proto).
+_CARD_TYPE_FIELDS = ("new", "review", "relearning", "learning")
+
+# Tags stripped from card HTML for e-ink rendering.
+_MEDIA_TAGS = ("audio", "video", "source", "iframe", "object", "embed", "canvas")
+
+# URL prefixes that we do NOT rewrite into ``/ms/...``.
+_ABSOLUTE_URL_PREFIXES = ("http://", "https://", "data:", "/ms/")
+
+
+_RATING_LABELS = {
+    "AGAIN": "Again",
+    "HARD": "Hard",
+    "GOOD": "Good",
+    "EASY": "Easy",
+}
+
 
 class Rating(IntEnum):
     """Anki's 4-button answer scale."""
@@ -32,25 +62,23 @@ class Rating(IntEnum):
 
     @property
     def label(self) -> str:
-        return _RATING_LABELS[self]
+        return _RATING_LABELS[self.name]
 
 
-_RATING_LABELS = {
-    Rating.AGAIN: "Again",
-    Rating.HARD: "Hard",
-    Rating.GOOD: "Good",
-    Rating.EASY: "Easy",
+# Pre-compiled regexes for ``_sanitize_for_eink``. Module-level to avoid
+# recompiling on every card render.
+_RE_SCRIPT = re.compile(r"<script\b[^>]*>.*?</script>", re.DOTALL | re.IGNORECASE)
+_RE_MEDIA_PAIR = {
+    tag: re.compile(rf"<{tag}\b[^>]*>.*?</{tag}>", re.DOTALL | re.IGNORECASE)
+    for tag in _MEDIA_TAGS
 }
-
-
-# Anki user flags: 0 = none, 1 = red, 2 = orange, 3 = green, 4 = blue.
-_FLAG_LABELS: dict[int, str] = {
-    0: "none",
-    1: "red",
-    2: "yellow",
-    3: "green",
-    4: "blue",
-}
+_RE_MEDIA_SELF = {tag: re.compile(rf"<{tag}\b[^>]*/?>", re.IGNORECASE) for tag in _MEDIA_TAGS}
+_RE_ANKI_PLAYBACK = re.compile(r"\[anki:(?:play|pause):[^\]]*\]")
+_RE_SOUND = re.compile(r"\[sound:[^\]]*\]")
+_RE_IMG_SRC = re.compile(r'<img\b[^>]*\bsrc="(?P<src>[^"]+)"[^>]*>', re.IGNORECASE)
+_RE_LINK_HREF = re.compile(r'<link\b[^>]*\bhref="(?P<href>[^"]+)"[^>]*>', re.IGNORECASE)
+_RE_STYLE_BLOCK = re.compile(r"<style\b[^>]*>.*?</style>", re.DOTALL | re.IGNORECASE)
+_RE_STYLE_URL = re.compile(r"url\(\s*['\"]?(?P<url>[^'\")]+)['\"]?\s*\)", re.IGNORECASE)
 
 
 @dataclass(slots=True)
@@ -142,6 +170,7 @@ class AnswerOutcome:
     next_interval: NextInterval | None
     stale: bool = False
 
+
 @dataclass(slots=True)
 class UndoInfo:
     """Snapshot of the collection's undo stack."""
@@ -190,6 +219,14 @@ def _queued_card_for(
     )
 
 
+def _walk_deck_tree(nodes: Iterable) -> Iterator:
+    """Yield every deck node from a deck tree, depth-first."""
+
+    for node in nodes:
+        yield node
+        yield from _walk_deck_tree(node.children)
+
+
 def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
     """Returns statistics for all decks (new / learning / review).
 
@@ -233,7 +270,7 @@ def get_deck_due_count(
 def get_deck_due_breakdown(
     col: anki.collection.Collection,
     deck_id: int,
-) -> "DueBreakdown":
+) -> DueBreakdown:
     """Breakdown of due cards by new/learning/review for the current deck.
 
     Uses ``col._backend.get_queued_cards``, which returns ready-made counts
@@ -275,18 +312,11 @@ def get_deck_card_count(
     """Total cards currently in the deck (no children, no limits applied)."""
 
     tree = col._backend.deck_tree(now=int(time.time()))  # type: ignore[attr-defined]
-
-    def _find(nodes) -> int | None:
-        for node in nodes:
-            if int(node.deck_id) == int(deck_id):
-                return int(node.total_in_deck)
-            found = _find(node.children)
-            if found is not None:
-                return found
-        return None
-
-    found = _find(tree.children)
-    return 0 if found is None else found
+    target = int(deck_id)
+    for node in _walk_deck_tree(tree.children):
+        if int(node.deck_id) == target:
+            return int(node.total_in_deck)
+    return 0
 
 
 def empty_filtered_deck(
@@ -313,6 +343,15 @@ def empty_filtered_deck(
     return count
 
 
+def _get_card_or_raise(col: anki.collection.Collection, card_id: int):
+    """Return the card or raise ``ValueError`` if it does not exist."""
+
+    try:
+        return col.get_card(CardId(card_id))
+    except anki.errors.NotFoundError as exc:
+        raise ValueError(f"card not found: {card_id}") from exc
+
+
 def set_card_flag(
     col: anki.collection.Collection,
     card_id: int,
@@ -334,10 +373,7 @@ def set_card_flag(
 
     if not 0 <= flag <= 4:
         raise ValueError(f"invalid flag: {flag!r}")
-    try:
-        col.get_card(CardId(card_id))
-    except anki.errors.NotFoundError as e:
-        raise ValueError(f"card not found: {card_id}") from e
+    _get_card_or_raise(col, card_id)
     result = col.set_user_flag_for_cards(flag, [CardId(card_id)])
     return int(result.count)
 
@@ -361,16 +397,12 @@ def set_card_marked(
         ValueError: if the card does not exist.
     """
 
-    try:
-        card = col.get_card(CardId(card_id))
-    except anki.errors.NotFoundError as e:
-        raise ValueError(f"card not found: {card_id}") from e
-    note = card.note()
-    if marked and not note.has_tag("marked"):
-        note.add_tag("marked")
-        note.flush()
-    elif not marked and note.has_tag("marked"):
-        note.remove_tag("marked")
+    note = _get_card_or_raise(col, card_id).note()
+    if marked != note.has_tag("marked"):
+        if marked:
+            note.add_tag("marked")
+        else:
+            note.remove_tag("marked")
         note.flush()
     return bool(note.has_tag("marked"))
 
@@ -391,16 +423,16 @@ def get_next_card(
             None if queued is None else queued.review_count,
         )
         return None
-    card_id = int(queued.cards[0].card.id)
-    card_state = queued.cards[0].states.current
+    head = queued.cards[0]
+    card_state = head.states.current
+    intervals = _compute_intervals(head)
     card_type = _card_type_from_state(card_state)
-    intervals = _compute_intervals(queued.cards[0])
     logger.info(
         "get_next_card: deck_id=%s next card_id=%s type=%s "
         "state(normal=%s filtered=%s) intervals(again=%s hard=%s good=%s easy=%s) "
         "remaining new=%s learning=%s review=%s",
         deck_id,
-        card_id,
+        int(head.card.id),
         card_type,
         card_state.HasField("normal"),
         card_state.HasField("filtered"),
@@ -412,7 +444,7 @@ def get_next_card(
         queued.learning_count,
         queued.review_count,
     )
-    return _load_card_view(col, card_id, card_type, intervals)
+    return _load_card_view(col, int(head.card.id), card_type, intervals)
 
 
 def get_card_view(
@@ -434,9 +466,10 @@ def get_card_view(
             front page.
     """
 
-    if not col.get_card(CardId(card_id)):
+    try:
+        return _load_card_view(col, card_id, card_type, intervals)
+    except anki.errors.NotFoundError:
         return None
-    return _load_card_view(col, card_id, card_type, intervals)
 
 
 def answer_card(
@@ -470,43 +503,8 @@ def answer_card(
     backend = col._backend  # type: ignore[attr-defined]
 
     if new_state is None or current_state is None:
-        if deck_id is None:
-            card = col.get_card(CardId(card_id))
-            deck_id = int(card.did)
-        queued = _queued_card_for(col, int(deck_id))
-        head = queued.cards[0] if queued and queued.cards else None
-        if head is not None and int(head.card.id) == int(card_id):
-            current_state = head.states.current
-            new_state = {
-                Rating.AGAIN: head.states.again,
-                Rating.HARD: head.states.hard,
-                Rating.GOOD: head.states.good,
-                Rating.EASY: head.states.easy,
-            }[rating]
-            logger.info(
-                "answer_card: card_id=%s deck_id=%s using queued.states rating=%s",
-                card_id,
-                deck_id,
-                int(rating),
-            )
-        else:
-            # Card is not in the due queue (e.g. it's not due, or the
-            # answer came from a different deck). Fallback to
-            # get_scheduling_states.
-            logger.warning(
-                "answer_card: card_id=%s NOT in deck_id=%s queue (head=%s); using get_scheduling_states",
-                card_id,
-                deck_id,
-                int(head.card.id) if head else None,
-            )
-            states = backend.get_scheduling_states(int(card_id))
-            current_state = states.current
-            new_state = {
-                Rating.AGAIN: states.again,
-                Rating.HARD: states.hard,
-                Rating.GOOD: states.good,
-                Rating.EASY: states.easy,
-            }[rating]
+        deck_id = _resolve_deck_id(col, card_id, deck_id)
+        current_state, new_state = _resolve_answer_states(col, backend, card_id, deck_id, rating)
 
     try:
         backend.answer_card(
@@ -520,29 +518,22 @@ def answer_card(
             )
         )
     except anki.errors.InvalidInput as exc:
-        if "not at top of queue" in str(exc):
-            logger.warning(
-                "answer_card: discarded stale/duplicate answer card_id=%s deck_id=%s rating=%s (err=%s)",
-                card_id,
-                deck_id,
-                int(rating),
-                exc,
-            )
-            return AnswerOutcome(
-                next_card_id=None,
-                next_interval=None,
-                stale=True,
-            )
-        raise
+        if "not at top of queue" not in str(exc):
+            raise
+        logger.warning(
+            "answer_card: discarded stale/duplicate answer card_id=%s deck_id=%s rating=%s (err=%s)",
+            card_id,
+            deck_id,
+            int(rating),
+            exc,
+        )
+        return AnswerOutcome(
+            next_card_id=None,
+            next_interval=None,
+            stale=True,
+        )
 
-    # IMPORTANT: when looking for the next card we use the ORIGINAL deck
-    # (the one passed by the caller), not ``card.did``. ``card.did`` is the
-    # leaf deck of the card, and in Anki a parent deck includes child
-    # decks, but not vice versa: if ``deck_id`` is the parent and the card
-    # lives in a child, then switching to ``card.did`` after the answer
-    # narrows the queue to the child only — there may be no due cards
-    # there even though there are some in the parent.
-    next_deck_id = int(deck_id) if deck_id is not None else int(col.get_card(CardId(card_id)).did)
+    next_deck_id = _resolve_deck_id(col, card_id, deck_id)
     queued = _queued_card_for(col, next_deck_id)
     next_cid: int | None = None
     if queued is not None and queued.cards:
@@ -563,6 +554,67 @@ def answer_card(
         next_card_id=next_cid,
         next_interval=_interval_from_state(new_state),
     )
+
+
+def _resolve_deck_id(
+    col: anki.collection.Collection,
+    card_id: int,
+    deck_id: int | None,
+) -> int:
+    """Resolve the deck id to use for queue lookups.
+
+    Always prefers the ``deck_id`` passed by the caller: a parent deck in
+    Anki includes its children, but not vice versa, so switching to
+    ``card.did`` after an answer would narrow the queue to the leaf deck
+    only — even though due cards may remain in siblings of that leaf
+    under the originally selected parent.
+    """
+
+    if deck_id is not None:
+        return int(deck_id)
+    return int(col.get_card(CardId(card_id)).did)
+
+
+def _resolve_answer_states(
+    col: anki.collection.Collection,
+    backend,
+    card_id: int,
+    deck_id: int,
+    rating: Rating,
+) -> tuple[sp.SchedulingState, sp.SchedulingState]:
+    """Return ``(current_state, new_state)`` for the card being answered.
+
+    Prefers states from ``get_queued_cards`` for the current deck; falls
+    back to ``get_scheduling_states`` if the card is no longer at the
+    head of the queue (it became not-due, or the answer came from a
+    different deck).
+    """
+
+    queued = _queued_card_for(col, deck_id)
+    head = queued.cards[0] if queued and queued.cards else None
+    if head is not None and int(head.card.id) == int(card_id):
+        logger.info(
+            "answer_card: card_id=%s deck_id=%s using queued.states rating=%s",
+            card_id,
+            deck_id,
+            int(rating),
+        )
+        return head.states.current, _select_new_state(head.states, rating)
+
+    logger.warning(
+        "answer_card: card_id=%s NOT in deck_id=%s queue (head=%s); using get_scheduling_states",
+        card_id,
+        deck_id,
+        int(head.card.id) if head else None,
+    )
+    states = backend.get_scheduling_states(int(card_id))
+    return states.current, _select_new_state(states, rating)
+
+
+def _select_new_state(states: sp.SchedulingStates, rating: Rating) -> sp.SchedulingState:
+    """Pick the new state for the given rating from a ``SchedulingStates`` block."""
+
+    return getattr(states, rating.name.lower())
 
 
 def _load_card_view(
@@ -588,25 +640,34 @@ def _load_card_view(
     note = card.note()
     notetype = card.note_type()
 
-    is_cloze = bool(notetype.get("type") == anki.collection.MODEL_CLOZE)
-
-    fields: list[tuple[str, str]] = []
-    for fld, fval in zip(notetype.get("flds", []), list(note.fields)):
-        fname = fld["name"] if isinstance(fld, dict) else str(fld)
-        fields.append((fname, _strip_html(fval)))
-
     return CardView(
         card_id=int(card_id),
         question_html=_sanitize_for_eink(card.question()),
         answer_html=_sanitize_for_eink(card.answer()),
-        is_cloze=is_cloze,
+        is_cloze=notetype.get("type") == anki.collection.MODEL_CLOZE,
         note_type_name=str(notetype.get("name", "")),
-        fields=fields,
+        fields=_extract_fields(notetype, note),
         card_type=card_type,
         intervals=intervals,
         flag=int(card.user_flag()),
-        is_marked=bool(card.note().has_tag("marked")),
+        is_marked=note.has_tag("marked"),
     )
+
+
+def _extract_fields(notetype, note) -> list[tuple[str, str]]:
+    """Build a list of ``(name, plain_value)`` tuples for the note's fields."""
+
+    fld_specs = notetype.get("flds", [])
+    return [
+        (_field_name(spec), _strip_html(value))
+        for spec, value in zip(fld_specs, list(note.fields))
+    ]
+
+
+def _field_name(spec) -> str:
+    """Return the ``name`` from a notetype field spec (handles dict / str)."""
+
+    return spec["name"] if isinstance(spec, dict) else str(spec)
 
 
 def _normal_to_card_type(normal: sp.SchedulingState.Normal) -> str:
@@ -615,17 +676,12 @@ def _normal_to_card_type(normal: sp.SchedulingState.Normal) -> str:
     ``Normal`` is a nested ``oneof`` variant of ``SchedulingState`` and
     at the same time a separate field ``ReschedulingFilter.original_state``.
     It has no ``normal`` field (unlike ``SchedulingState``), so we unpack
-    it directly.
+    it directly. Returns ``"new"`` if no recognised variant is set.
     """
 
-    if normal.HasField("new"):
-        return "new"
-    if normal.HasField("review"):
-        return "review"
-    if normal.HasField("relearning"):
-        return "relearning"
-    if normal.HasField("learning"):
-        return "learning"
+    for kind in _CARD_TYPE_FIELDS:
+        if normal.HasField(kind):
+            return kind
     return "new"
 
 
@@ -646,7 +702,6 @@ def _card_type_from_state(state: sp.SchedulingState) -> str:
 
     if state.HasField("filtered"):
         filtered = state.filtered
-        # Rescheduling: read the original state recursively.
         if filtered.HasField("rescheduling"):
             return _normal_to_card_type(filtered.rescheduling.original_state)
         # Preview (haven't started learning yet) — show as ``new`` for the UI.
@@ -663,31 +718,48 @@ def _interval_from_state(state: sp.SchedulingState) -> NextInterval | None:
     ``_anki_repo/proto/anki/scheduler.proto:98-101``.
     """
 
-    if state.HasField("normal"):
-        normal = state.normal
-        if normal.HasField("review"):
-            days = int(normal.review.scheduled_days)
-            return NextInterval(
-                seconds=days * 86400,
-                label=_format_interval(days * 86400),
-            )
-        if normal.HasField("learning"):
-            secs = int(normal.learning.scheduled_secs or 600)
-            return NextInterval(seconds=secs, label=_format_interval(secs))
-        if normal.HasField("relearning"):
-            rel = normal.relearning
-            if rel.HasField("review"):
-                days = int(rel.review.scheduled_days)
-                return NextInterval(
-                    seconds=days * 86400,
-                    label=_format_interval(days * 86400),
-                )
-            if rel.HasField("learning"):
-                secs = int(rel.learning.scheduled_secs or 600)
-                return NextInterval(seconds=secs, label=_format_interval(secs))
-        if normal.HasField("new"):
-            return NextInterval(seconds=0, label="new")
+    if not state.HasField("normal"):
+        return None
+    return _interval_from_normal(state.normal)
+
+
+def _interval_from_normal(normal: sp.SchedulingState.Normal) -> NextInterval | None:
+    """Convert a ``Normal`` variant to a ``NextInterval`` (or None)."""
+
+    for kind in _CARD_TYPE_FIELDS:
+        if normal.HasField(kind):
+            return _interval_for_kind(getattr(normal, kind), kind)
     return None
+
+
+def _interval_for_kind(msg, kind: str) -> NextInterval | None:
+    """Convert one ``Normal`` sub-variant into a ``NextInterval``."""
+
+    if kind == "new":
+        return NextInterval(seconds=0, label="new")
+    if kind == "review":
+        return _days_interval(int(msg.scheduled_days))
+    if kind == "learning":
+        return _seconds_interval(int(msg.scheduled_secs or 600))
+    # Relearning may contain nested review (days) or learning (seconds).
+    if msg.HasField("review"):
+        return _days_interval(int(msg.review.scheduled_days))
+    if msg.HasField("learning"):
+        return _seconds_interval(int(msg.learning.scheduled_secs or 600))
+    return None
+
+
+def _days_interval(days: int) -> NextInterval:
+    """Build a ``NextInterval`` for a review interval measured in days."""
+
+    seconds = days * 86400
+    return NextInterval(seconds=seconds, label=_format_interval(seconds))
+
+
+def _seconds_interval(seconds: int) -> NextInterval:
+    """Build a ``NextInterval`` for a learning interval measured in seconds."""
+
+    return NextInterval(seconds=seconds, label=_format_interval(seconds))
 
 
 def _label_or_dash(state: sp.SchedulingState) -> str:
@@ -750,6 +822,41 @@ def _strip_html(text: str) -> str:
     return cleaned.replace("&nbsp;", " ").strip()
 
 
+def _is_absolute_url(url: str) -> bool:
+    """True if ``url`` already points outside the media dir or is a data URI."""
+
+    return url.startswith(_ABSOLUTE_URL_PREFIXES)
+
+
+def _rewrite_img_src(match: re.Match[str]) -> str:
+    """Rewrite ``<img src="name">`` → ``<img src="/ms/name">`` if relative."""
+
+    full = match.group(0)
+    src = match["src"]
+    if _is_absolute_url(src):
+        return full
+    return re.sub(r'src="[^"]*"', f'src="/ms/{src}"', full, count=1)
+
+
+def _rewrite_link_href(match: re.Match[str]) -> str:
+    """Rewrite ``<link href="name">`` → ``<link href="/ms/name">`` if relative."""
+
+    full = match.group(0)
+    href = match["href"]
+    if _is_absolute_url(href):
+        return full
+    return re.sub(r'href="[^"]*"', f'href="/ms/{href}"', full, count=1)
+
+
+def _rewrite_style_url(match: re.Match[str]) -> str:
+    """Rewrite ``url(name)`` inside ``<style>`` → ``url(/ms/name)`` if relative."""
+
+    url = match["url"]
+    if _is_absolute_url(url):
+        return match.group(0)
+    return f"url(/ms/{url})"
+
+
 def _sanitize_for_eink(html: str) -> str:
     """Prepares card HTML for rendering on e-ink Kindle.
 
@@ -769,113 +876,30 @@ def _sanitize_for_eink(html: str) -> str:
       cloze is handled by an ``!important`` override in ``eink.css``.
     """
 
-    html = re.sub(
-        r"<script\b[^>]*>.*?</script>",
-        "",
-        html,
-        flags=re.DOTALL | re.IGNORECASE,
-    )
+    html = _RE_SCRIPT.sub("", html)
 
     # Remove the whole tag with contents (Anki renders relearn_audio/[sound:...]
-    # as <audio>, video as <video>, etc.).
-    for tag in ("audio", "video", "source", "iframe", "object", "embed", "canvas"):
-        html = re.sub(
-            rf"<{tag}\b[^>]*>.*?</{tag}>",
-            "",
-            html,
-            flags=re.DOTALL | re.IGNORECASE,
-        )
-        # Self-closing variants: <tag ... />
-        html = re.sub(
-            rf"<{tag}\b[^>]*/?>",
-            "",
-            html,
-            flags=re.IGNORECASE,
-        )
+    # as <audio>, video as <video>, etc.), then any self-closing variants.
+    for tag in _MEDIA_TAGS:
+        html = _RE_MEDIA_PAIR[tag].sub("", html)
+        html = _RE_MEDIA_SELF[tag].sub("", html)
 
-    # Strip Anki playback markers: [anki:play:a:0], [anki:pause:v:1] and the legacy [sound:foo.mp3]. 
-    html = re.sub(
-        r"\[anki:(?:play|pause):[^\]]*\]",
-        "",
-        html,
-    )
-    html = re.sub(
-        r"\[sound:[^\]]*\]",
-        "",
-        html,
-    )
+    # Strip Anki playback markers: [anki:play:a:0], [anki:pause:v:1] and the legacy [sound:foo.mp3].
+    html = _RE_ANKI_PLAYBACK.sub("", html)
+    html = _RE_SOUND.sub("", html)
 
-    # <img src="filename"> → <img src="/ms/filename">. Only touch the src
-    # attribute; keep the rest (alt, style, width, height) intact.
-    def _rewrite_img(match: re.Match[str]) -> str:
-        full = match.group(0)
-        src = match.group("src")
-        # Do not touch absolute URLs and data: URIs.
-        if src.startswith(("http://", "https://", "data:", "/ms/")):
-            return full
-        return re.sub(
-            r'src="[^"]*"',
-            f'src="/ms/{src}"',
-            full,
-            count=1,
-        )
-
-    html = re.sub(
-        r'<img\b[^>]*\bsrc="(?P<src>[^"]+)"[^>]*>',
-        _rewrite_img,
-        html,
-        flags=re.IGNORECASE,
-    )
+    # <img src="filename"> → <img src="/ms/filename">.
+    html = _RE_IMG_SRC.sub(_rewrite_img_src, html)
 
     # <link href="filename.css"> → <link href="/ms/filename.css">. Anki
     # embeds notetype styles via <link rel="stylesheet">.
-    def _rewrite_link(match: re.Match[str]) -> str:
-        full = match.group(0)
-        href = match.group("href")
-        if href.startswith(("http://", "https://", "data:", "/ms/")):
-            return full
-        return re.sub(
-            r'href="[^"]*"',
-            f'href="/ms/{href}"',
-            full,
-            count=1,
-        )
-
-    html = re.sub(
-        r'<link\b[^>]*\bhref="(?P<href>[^"]+)"[^>]*>',
-        _rewrite_link,
-        html,
-        flags=re.IGNORECASE,
-    )
+    html = _RE_LINK_HREF.sub(_rewrite_link_href, html)
 
     # Inside <style>: url(filename.ttf) → url(/ms/filename.ttf). Anki
     # embeds fonts via @font-face { src: url("_NotoSansJP.otf") }.
-    def _rewrite_style_url(match: re.Match[str]) -> str:
-        full = match.group(0)
-        url = match.group("url")
-        if url.startswith(("http://", "https://", "data:", "/ms/")):
-            return full
-        return re.sub(
-            r"url\([^)]*\)",
-            f"url(/ms/{url})",
-            full,
-            count=1,
-        )
-
     def _rewrite_style_block(match: re.Match[str]) -> str:
-        block = match.group(0)
-        return re.sub(
-            r"url\(\s*['\"]?(?P<url>[^'\")]+)['\"]?\s*\)",
-            _rewrite_style_url,
-            block,
-            flags=re.IGNORECASE,
-        )
+        return _RE_STYLE_URL.sub(_rewrite_style_url, match.group(0))
 
-    html = re.sub(
-        r"<style\b[^>]*>.*?</style>",
-        _rewrite_style_block,
-        html,
-        flags=re.DOTALL | re.IGNORECASE,
-    )
+    html = _RE_STYLE_BLOCK.sub(_rewrite_style_block, html)
 
     return html
