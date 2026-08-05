@@ -29,19 +29,15 @@ _IDLE_SECONDS: float = 300.0
 _EVICT_INTERVAL_SECONDS: float = 60.0
 
 
-async def _idle_collection_sweeper(store: AccountStore) -> None:
+async def idle_collection_sweeper(store: AccountStore) -> None:
     """Periodically closes idle collections for every loaded account.
 
-    Cancel the task to stop the loop. ``CancelledError`` is re-raised
-    so callers (typically the FastAPI lifespan) can await the task
-    cleanly during shutdown.
+    Cancel the task to stop the loop; ``CancelledError`` propagates so
+    the FastAPI lifespan can await the task cleanly during shutdown.
     """
 
     while True:
-        try:
-            await asyncio.sleep(_EVICT_INTERVAL_SECONDS)
-        except asyncio.CancelledError:
-            raise
+        await asyncio.sleep(_EVICT_INTERVAL_SECONDS)
 
         closed = 0
         for manager in store.iter_managers():

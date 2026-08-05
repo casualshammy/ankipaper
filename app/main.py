@@ -40,11 +40,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        from app.storage.eviction import _idle_collection_sweeper
+        from app.storage.eviction import idle_collection_sweeper
         from app.web.ratelimit import close_redis
 
         store = get_account_store()
-        sweeper_task = asyncio.create_task(_idle_collection_sweeper(store))
+        sweeper_task = asyncio.create_task(idle_collection_sweeper(store))
         try:
             yield
         finally:
