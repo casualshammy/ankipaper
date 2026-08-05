@@ -41,21 +41,10 @@ class CollectionManager:
         self._last_access: float = 0.0
         self._path = collection_path
 
-    @property
-    def collection_path(self) -> Path:
-        """Path to the collection file."""
-
-        return self._path
-
     def has_collection(self) -> bool:
         """True if the collection file exists on disk."""
 
         return self._path.exists()
-
-    def is_open(self) -> bool:
-        """True if the collection is currently open in memory."""
-
-        return self._collection is not None
 
     def media_dir(self) -> Path:
         """Path to the media directory (sibling of ``collection.media``)."""
