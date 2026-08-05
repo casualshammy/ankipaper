@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import logging
 from dataclasses import dataclass
+from typing import Never
 
 from anki import sync_pb2
 from anki.collection import Collection
@@ -32,6 +33,15 @@ class FullSyncKind(enum.Enum):
 
     UPLOAD = "upload"
     """Remote is empty; only upload to AnkiWeb is possible (FULL_UPLOAD)."""
+
+
+# Maps ``SyncCollectionResponse.ChangesRequired`` to :class:`FullSyncKind`;
+# ``NO_CHANGES`` / ``NORMAL_SYNC`` are absent and map to ``None``.
+_FULL_SYNC_KIND_BY_VALUE: dict[int, FullSyncKind] = {
+    sync_pb2.SyncCollectionResponse.FULL_SYNC: FullSyncKind.CONFLICT,
+    sync_pb2.SyncCollectionResponse.FULL_DOWNLOAD: FullSyncKind.DOWNLOAD,
+    sync_pb2.SyncCollectionResponse.FULL_UPLOAD: FullSyncKind.UPLOAD,
+}
 
 
 class SyncError(RuntimeError):
@@ -67,6 +77,20 @@ class SyncResult:
     """AnkiWeb server message from ``SyncCollectionResponse.server_message``."""
 
 
+def _raise_sync_error(exc: BackendError, action: str) -> Never:
+    """Raises :class:`AuthExpiredError` or :class:`SyncError` for ``exc``.
+
+    ``action`` is a short description of the failed step, used in the
+    resulting :class:`SyncError` message (e.g. ``"Failed to fetch sync status"``).
+    """
+
+    if is_auth_error(exc):
+        raise AuthExpiredError(
+            "AnkiWeb rejected the stored hostKey, please sign in again"
+        ) from exc
+    raise SyncError(f"{action}: {exc}") from exc
+
+
 def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) -> SyncResult:
     """Synchronises the local collection with AnkiWeb (incremental).
 
@@ -86,11 +110,7 @@ def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) ->
     try:
         status = col.sync_status(auth)
     except BackendError as exc:
-        if is_auth_error(exc):
-            raise AuthExpiredError(
-                "AnkiWeb rejected the stored hostKey, please sign in again"
-            ) from exc
-        raise SyncError(f"Failed to fetch sync status: {exc}") from exc
+        _raise_sync_error(exc, "Failed to fetch sync status")
 
     if not status.required:
         logger.info("Sync is not required, collection is up to date")
@@ -105,11 +125,7 @@ def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) ->
         # synced separately via ``SyncMediaWorker.start()``.
         result = col.sync_collection(auth=auth, sync_media=False)
     except BackendError as exc:
-        if is_auth_error(exc):
-            raise AuthExpiredError(
-                "AnkiWeb rejected the stored hostKey, please sign in again"
-            ) from exc
-        raise SyncError(f"Server rejected sync: {exc}") from exc
+        _raise_sync_error(exc, "Server rejected sync")
 
     if result.server_message:
         logger.info("AnkiWeb server message: %s", result.server_message)
@@ -121,33 +137,19 @@ def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) ->
             full_sync_kind.value,
             col.card_count(),
         )
-        return SyncResult(
-            required=True,
-            new_endpoint=result.new_endpoint or None,
-            full_sync_kind=full_sync_kind,
-            server_message=result.server_message or "",
-        )
 
     return SyncResult(
         required=True,
         new_endpoint=result.new_endpoint or None,
+        full_sync_kind=full_sync_kind,
         server_message=result.server_message or "",
     )
 
 
 def _full_sync_kind(changes_required: int) -> FullSyncKind | None:
-    """Maps ``SyncCollectionResponse.ChangesRequired`` to a :class:`FullSyncKind`.
+    """Maps ``SyncCollectionResponse.ChangesRequired`` to a :class:`FullSyncKind`."""
 
-    Returns ``None`` for ``NO_CHANGES`` and ``NORMAL_SYNC``.
-    """
-
-    if changes_required == sync_pb2.SyncCollectionResponse.FULL_SYNC:
-        return FullSyncKind.CONFLICT
-    if changes_required == sync_pb2.SyncCollectionResponse.FULL_DOWNLOAD:
-        return FullSyncKind.DOWNLOAD
-    if changes_required == sync_pb2.SyncCollectionResponse.FULL_UPLOAD:
-        return FullSyncKind.UPLOAD
-    return None
+    return _FULL_SYNC_KIND_BY_VALUE.get(changes_required)
 
 
 def full_download(
@@ -174,7 +176,7 @@ def full_download(
         SyncError: on other failures.
     """
 
-    return _do_full_sync(col, host_key, upload=False, endpoint=endpoint, label="download")
+    return _do_full_sync(col, host_key, upload=False, endpoint=endpoint)
 
 
 def full_upload(
@@ -197,7 +199,20 @@ def full_upload(
         SyncError: on other failures.
     """
 
-    return _do_full_sync(col, host_key, upload=True, endpoint=endpoint, label="upload")
+    return _do_full_sync(col, host_key, upload=True, endpoint=endpoint)
+
+
+def _safe_reopen_after_full_sync(col: Collection, action: str) -> None:
+    """Reopens ``col`` after a failed full sync, swallowing secondary errors.
+
+    A second failure here must never mask the original exception, so any
+    error from ``reopen`` is only logged.
+    """
+
+    try:
+        col.reopen(after_full_sync=True)
+    except Exception:  # noqa: BLE001
+        logger.warning("col.reopen after failed full %s failed; continuing", action)
 
 
 def _do_full_sync(
@@ -206,24 +221,20 @@ def _do_full_sync(
     *,
     upload: bool,
     endpoint: str | None,
-    label: str,
 ) -> SyncResult:
     """Shared implementation of :func:`full_download` and :func:`full_upload`."""
 
+    action = "upload" if upload else "download"
     auth = make_auth(host_key, endpoint)
     logger.info(
-        "Starting full %s with AnkiWeb (endpoint=%s)", label, endpoint or "default"
+        "Starting full %s with AnkiWeb (endpoint=%s)", action, endpoint or "default"
     )
 
-    # AnkiDroid reference (``Sync.kt:handleDownload`` / ``handleUpload``):
-    #   close(downgrade = false, forFullSync = true)   <-- does NOT close the Rust backend
-    #   fullUploadOrDownload(auth, upload, serverUsn = mediaUsn)
-    #   reopen(afterFullSync = true)                   <-- in finally
-    #
-    # In Python ``Collection.close()`` always calls ``close_collection``
-    # on the Rust side (no ``forFullSync`` flag). We emulate AnkiDroid's
-    # behaviour manually: drop the Python wrapper ``col.db = None`` via
-    # ``close_for_full_sync()`` without closing the backend.
+    # AnkiDroid keeps the Rust backend alive across full-sync (its
+    # ``close(forFullSync=true)`` only drops the Kotlin wrapper); Python's
+    # ``Collection.close()`` instead always closes the backend, so we use
+    # ``close_for_full_sync()`` to drop just the wrapper and let
+    # ``full_upload_or_download`` take ownership of the file.
     col.close_for_full_sync()
 
     try:
@@ -234,21 +245,10 @@ def _do_full_sync(
                 upload=upload,
             )
         )
-    except BackendError as exc:
-        try:
-            col.reopen(after_full_sync=True)
-        except Exception:  # noqa: BLE001
-            logger.warning("col.reopen after failed full %s failed; continuing", label)
-        if is_auth_error(exc):
-            raise AuthExpiredError(
-                "AnkiWeb rejected the stored hostKey, please sign in again"
-            ) from exc
-        raise SyncError(f"Full {label} failed: {exc}") from exc
-    except Exception:
-        try:
-            col.reopen(after_full_sync=True)
-        except Exception:  # noqa: BLE001
-            logger.warning("col.reopen after failed full %s failed; continuing", label)
+    except Exception as exc:
+        _safe_reopen_after_full_sync(col, action)
+        if isinstance(exc, BackendError):
+            _raise_sync_error(exc, f"Full {action} failed")
         raise
 
     col.reopen(after_full_sync=True)
@@ -264,17 +264,10 @@ def try_sync(
 
     try:
         return perform_sync(col, host_key, endpoint)
-    except AuthExpiredError as exc:
+    except (AuthExpiredError, SyncError) as exc:
         return SyncResult(
             required=False,
             new_endpoint=None,
             error=str(exc),
-            auth_expired=True,
-        )
-    except SyncError as exc:
-        return SyncResult(
-            required=False,
-            new_endpoint=None,
-            error=str(exc),
-            auth_expired=False,
+            auth_expired=isinstance(exc, AuthExpiredError),
         )
