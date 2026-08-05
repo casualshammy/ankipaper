@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 import anki.collection
 from anki.errors import BackendError
@@ -113,16 +113,30 @@ def is_auth_error(exc: BackendError) -> bool:
     errors that may be transient.
     """
 
+    return _classify_backend_error(exc) == "auth"
+
+
+def _classify_backend_error(exc: BackendError) -> str:
+    """Returns ``"auth"``, ``"network"`` or ``""`` for the given ``BackendError``.
+
+    A single source of truth for marker matching shared by
+    :func:`is_auth_error` and :func:`_translate_backend_error`.
+    """
+
     message = str(exc).lower()
-    return any(marker in message for marker in AUTH_ERROR_MARKERS)
+    if any(marker in message for marker in AUTH_ERROR_MARKERS):
+        return "auth"
+    if any(marker in message for marker in NETWORK_ERROR_MARKERS):
+        return "network"
+    return ""
 
 
 def _translate_backend_error(exc: BackendError) -> str:
     """Converts a ``BackendError`` into a human-readable message."""
 
-    message = str(exc).lower()
-    if any(marker in message for marker in AUTH_ERROR_MARKERS):
+    kind = _classify_backend_error(exc)
+    if kind == "auth":
         return "Invalid AnkiWeb username or password"
-    if any(marker in message for marker in NETWORK_ERROR_MARKERS):
+    if kind == "network":
         return "Could not reach AnkiWeb, please try again"
     return f"AnkiWeb error: {exc}"
