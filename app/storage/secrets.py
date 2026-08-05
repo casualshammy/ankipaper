@@ -17,46 +17,98 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from app.config import get_settings
-
 logger = logging.getLogger(__name__)
 
-DEFAULT_PERMISSIONS = 0o600
+# Mode 0600 for all secret files on disk.
+_SECRET_FILE_MODE = 0o600
+
+# All instance-wide secrets live under /data; per-account secrets live
+# under /data/accounts/<id>/ and use the dedicated hostkey Fernet.
+_DATA_DIR = Path("/data")
+_SESSION_SECRET_PATH = _DATA_DIR / "session.secret"
+_HOSTKEY_SECRET_PATH = _DATA_DIR / "hostkey.secret"
 
 
-def _fernet_key_path() -> Path:
-    """Returns the path to the Fernet key file."""
-
-    return Path("/data/session.secret")
+# --- Low-level helpers shared by both Fernet key pipelines ---
 
 
-def _ensure_data_dir() -> None:
-    """Ensures that the parent directory for secrets exists."""
+def _load_or_create_key_bytes(path: Path, *, log_label: str) -> bytes:
+    """Returns the Fernet key bytes stored at ``path``, creating the file if missing.
 
-    path = _fernet_key_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-
-def _load_or_create_fernet_key() -> bytes:
-    """Loads the Fernet key from the file or creates a new one.
-
-    The file is created with mode 0600.
+    The file is created with mode 0600. ``log_label`` is the human-readable
+    name used in the "generated" log line (e.g. ``"session secret"``).
     """
 
-    path = _fernet_key_path()
-    _ensure_data_dir()
-
+    path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         return path.read_bytes().strip()
 
     key = Fernet.generate_key()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, DEFAULT_PERMISSIONS)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _SECRET_FILE_MODE)
     try:
         os.write(fd, key)
     finally:
         os.close(fd)
-    logger.info("Generated new session secret at %s", path)
+    logger.info("Generated new %s at %s", log_label, path)
     return key
+
+
+def _fernet_from(path: Path) -> Fernet | None:
+    """Returns a Fernet instance for the key file at ``path``, or None.
+
+    Returns ``None`` if the file is missing or unreadable. Callers must
+    treat ``None`` as "no secret available".
+    """
+
+    if not path.exists():
+        return None
+    try:
+        return Fernet(path.read_bytes().strip())
+    except (ValueError, OSError) as exc:
+        logger.warning("Failed to load secret at %s: %s", path, exc)
+        return None
+
+
+def _encrypt_and_write(path: Path, plaintext: str, fernet: Fernet, *, name_for_log: str) -> None:
+    """Encrypts ``plaintext`` with ``fernet`` and writes the ciphertext to ``path`` (mode 0600)."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, _SECRET_FILE_MODE)
+    try:
+        os.write(fd, fernet.encrypt(plaintext.encode("utf-8")))
+    finally:
+        os.close(fd)
+    logger.info("Saved secret %s", name_for_log)
+
+
+def _decrypt_or_none(path: Path, fernet: Fernet, *, name_for_log: str) -> str | None:
+    """Reads ``path`` and decrypts it with ``fernet``; logs and returns ``None`` on any error."""
+
+    try:
+        return fernet.decrypt(path.read_bytes()).decode("utf-8")
+    except (InvalidToken, OSError) as exc:
+        logger.warning("Failed to decrypt %s: %s", name_for_log, exc)
+        return None
+
+
+def _safe_unlink(path: Path) -> None:
+    """Removes ``path`` if it exists; logs and ignores OS errors."""
+
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        logger.warning("Failed to delete %s: %s", path, exc)
+
+
+# --- Session secret (cookie + CSRF) ---
+
+
+def _load_or_create_fernet_key() -> bytes:
+    """Returns the ``session.secret`` Fernet key bytes, creating the file if missing."""
+
+    return _load_or_create_key_bytes(_SESSION_SECRET_PATH, log_label="session secret")
 
 
 def read_session_secret_bytes() -> bytes | None:
@@ -73,156 +125,31 @@ def read_session_secret_bytes() -> bytes | None:
     material and a stray trailing newline would change the digest.
     """
 
-    path = _fernet_key_path()
-    if not path.exists():
+    if not _SESSION_SECRET_PATH.exists():
         return None
     try:
-        return path.read_bytes().strip()
+        return _SESSION_SECRET_PATH.read_bytes().strip()
     except OSError as exc:
         logger.warning("Cannot read session secret: %s", exc)
         return None
 
 
-def _fernet() -> Fernet | None:
-    """Returns a Fernet instance, or None if the key has not been created yet.
-
-    Before the first login the file may be missing — this is fine, do not fail.
-    """
-
-    path = _fernet_key_path()
-    if not path.exists():
-        return None
-    try:
-        return Fernet(path.read_bytes().strip())
-    except (ValueError, OSError) as exc:
-        logger.warning("Failed to load session secret: %s", exc)
-        return None
-
-
-_HOSTKEY_KEY_FILE = "hostkey.secret"
-
-
-def _hostkey_fernet_key_path() -> Path:
-    """Returns the path to the hostKey encryption Fernet key file."""
-
-    return Path("/data") / _HOSTKEY_KEY_FILE
+# --- hostKey secret (per-account encryption) ---
 
 
 def _load_or_create_hostkey_fernet_key() -> bytes:
-    """Loads the hostKey Fernet key from the file or creates a new one.
+    """Returns the ``hostkey.secret`` Fernet key bytes, creating the file if missing."""
 
-    The file is created with mode 0600.
-    """
-
-    path = _hostkey_fernet_key_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    if path.exists():
-        return path.read_bytes().strip()
-
-    key = Fernet.generate_key()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, DEFAULT_PERMISSIONS)
-    try:
-        os.write(fd, key)
-    finally:
-        os.close(fd)
-    logger.info("Generated new hostkey secret at %s", path)
-    return key
+    return _load_or_create_key_bytes(_HOSTKEY_SECRET_PATH, log_label="hostkey secret")
 
 
 def _hostkey_fernet() -> Fernet | None:
-    """Returns a Fernet instance for hostKey encryption, or None if the
-    key file has not been created yet."""
+    """Returns a Fernet instance for hostKey encryption, or ``None`` if missing."""
 
-    path = _hostkey_fernet_key_path()
-    if not path.exists():
-        return None
-    try:
-        return Fernet(path.read_bytes().strip())
-    except (ValueError, OSError) as exc:
-        logger.warning("Failed to load hostkey secret: %s", exc)
-        return None
+    return _fernet_from(_HOSTKEY_SECRET_PATH)
 
 
-def _save_secret_at(path: Path, value: str, *, name_for_log: str) -> None:
-    """Encrypts ``value`` and saves it to ``path`` (mode 0600).
-
-    Args:
-        path: full path to the secret file.
-        value: plaintext value to encrypt.
-        name_for_log: human-readable name for logs (e.g. ``hostkey.enc``).
-    """
-
-    f = _fernet() or Fernet(_load_or_create_fernet_key())
-    encrypted = f.encrypt(value.encode("utf-8"))
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, DEFAULT_PERMISSIONS)
-    try:
-        os.write(fd, encrypted)
-    finally:
-        os.close(fd)
-    logger.info("Saved secret %s", name_for_log)
-
-
-def _load_secret_at(path: Path, *, name_for_log: str) -> str | None:
-    """Decrypts and returns the secret at the given path, or None."""
-
-    if not path.exists():
-        return None
-
-    f = _fernet()
-    if f is None:
-        logger.warning("Cannot decrypt %s: session secret not available", name_for_log)
-        return None
-
-    try:
-        return f.decrypt(path.read_bytes()).decode("utf-8")
-    except (InvalidToken, OSError) as exc:
-        logger.warning("Failed to decrypt %s: %s", name_for_log, exc)
-        return None
-
-
-def _delete_secret_at(path: Path) -> None:
-    """Deletes the secret file at the given path. Errors are ignored."""
-
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        logger.warning("Failed to delete %s: %s", path, exc)
-
-
-def save_secret(name: str, value: str) -> None:
-    """Encrypts ``value`` and saves it to ``<data_dir>/<name>`` (mode 0600).
-
-    Used for instance-wide global secrets (currently not used; kept for
-    backward compatibility and future global secrets).
-
-    Args:
-        name: file name (e.g. ``"hostkey.enc"``).
-        value: plaintext value to encrypt.
-    """
-
-    path = Path("/data") / name
-    _save_secret_at(path, value, name_for_log=name)
-
-
-def load_secret(name: str) -> str | None:
-    """Decrypts and returns the secret from ``<data_dir>/<name>``, or None.
-
-    Args:
-        name: secret file name (e.g. ``"hostkey.enc"``).
-    """
-
-    return _load_secret_at(Path("/data") / name, name_for_log=name)
-
-
-def delete_secret(name: str) -> None:
-    """Deletes the secret file if it exists. Errors are ignored."""
-
-    _delete_secret_at(Path("/data") / name)
+# --- Per-account secret save/load/delete ---
 
 
 def save_secret_in(account_dir: Path, name: str, value: str) -> None:
@@ -239,16 +166,8 @@ def save_secret_in(account_dir: Path, name: str, value: str) -> None:
     """
 
     path = account_dir / name
-    f = _hostkey_fernet() or Fernet(_load_or_create_hostkey_fernet_key())
-    encrypted = f.encrypt(value.encode("utf-8"))
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, DEFAULT_PERMISSIONS)
-    try:
-        os.write(fd, encrypted)
-    finally:
-        os.close(fd)
-    logger.info("Saved secret %s", f"{account_dir.name}/{name}")
+    fernet = _hostkey_fernet() or Fernet(_load_or_create_hostkey_fernet_key())
+    _encrypt_and_write(path, value, fernet, name_for_log=f"{account_dir.name}/{name}")
 
 
 def load_secret_in(account_dir: Path, name: str) -> str | None:
@@ -266,22 +185,17 @@ def load_secret_in(account_dir: Path, name: str) -> str | None:
     if not path.exists():
         return None
 
-    f = _hostkey_fernet()
-    if f is None:
+    fernet = _hostkey_fernet()
+    if fernet is None:
         logger.warning(
             "Cannot decrypt %s: hostkey secret not available",
             f"{account_dir.name}/{name}",
         )
         return None
-
-    try:
-        return f.decrypt(path.read_bytes()).decode("utf-8")
-    except (InvalidToken, OSError) as exc:
-        logger.warning("Failed to decrypt %s: %s", f"{account_dir.name}/{name}", exc)
-        return None
+    return _decrypt_or_none(path, fernet, name_for_log=f"{account_dir.name}/{name}")
 
 
 def delete_secret_in(account_dir: Path, name: str) -> None:
     """Deletes the secret in the given account directory. Errors are ignored."""
 
-    _delete_secret_at(account_dir / name)
+    _safe_unlink(account_dir / name)
