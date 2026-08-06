@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
 from app.storage.account import Account
+from app.sync.media_files import safe_media_path
 from app.web.deps import get_current_account
 
 logger = logging.getLogger(__name__)
@@ -39,20 +40,18 @@ async def serve_media(
         account: current account (from the cookie).
 
     Raises:
-        HTTPException: 404 if the file is missing, 400 if the path contains ``..``.
+        HTTPException: 404 if the file is missing, 400 if the path escapes
+            ``collection.media/`` (NUL bytes, drive letters, ``..`` segments,
+            or symlink traversal).
     """
 
-    if ".." in filename.split("/") or filename.startswith("/"):
-        raise HTTPException(status_code=400, detail="Invalid path")
-
     media_root = _media_dir(account)
-    file_path = (media_root / filename).resolve()
-
-    # Path-traversal protection: file_path must remain inside media_root.
-    try:
-        file_path.relative_to(media_root.resolve())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid path") from exc
+    # Canonical path-traversal hardening — rejects NUL bytes, drive
+    # letters, ``..`` segments, and paths that traverse a symlink under
+    # ``media_root``. See :func:`app.sync.media_files.safe_media_path`.
+    file_path = safe_media_path(filename, media_root)
+    if file_path is None:
+        raise HTTPException(status_code=400, detail="Invalid path")
 
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="Media not found")

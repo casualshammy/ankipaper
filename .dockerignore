@@ -4,7 +4,6 @@
 .venv/
 deploy/
 .gitignore
-.env.example
 AGENTS.md
 *.pyc
 *.pyo

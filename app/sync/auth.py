@@ -11,7 +11,7 @@ import anki.collection
 from anki.errors import BackendError
 from anki.sync_pb2 import SyncAuth
 
-from app.sync.endpoints import DEFAULT_ENDPOINT
+from app.sync.endpoints import DEFAULT_ENDPOINT, normalize_endpoint
 
 # Lower-case substrings used to classify ``BackendError`` messages.
 AUTH_ERROR_MARKERS: tuple[str, ...] = (
@@ -99,10 +99,9 @@ def make_auth(host_key: str, endpoint: str | None = None) -> SyncAuth:
     Args:
         host_key: hostKey obtained at login.
         endpoint: URL of the sync server (``sync20.ankiweb.net`` etc.).
-            ``None`` falls back to :data:`app.sync.endpoints.DEFAULT_ENDPOINT`.
     """
 
-    return SyncAuth(hkey=host_key, endpoint=endpoint or DEFAULT_ENDPOINT)
+    return SyncAuth(hkey=host_key, endpoint=normalize_endpoint(endpoint))
 
 
 def is_auth_error(exc: BackendError) -> bool:

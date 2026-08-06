@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     behind_proxy: bool = Field(
         default=False,
-        description="True if the application runs behind a reverse proxy (nginx).",
+        description="True if the application runs behind a reverse proxy.",
     )
 
     show_privacy_policy: bool = Field(

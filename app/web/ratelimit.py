@@ -276,7 +276,7 @@ def client_ip(request: Request, settings: Settings | None = None) -> str:
        origin IP is not reachable from the open internet.
 
     Otherwise ``request.client.host`` is used — which, in a Docker setup
-    with nginx in front, will be the nginx container's IP and
+    with reverse proxy in front, will be the reverse proxy container's IP and
     effectively rate-limit the entire deployment. Always set
     ``ANKIPAPER_BEHIND_PROXY=true`` in production.
     """

@@ -24,7 +24,7 @@
   <p>
     <a class="btn" href="/">Back to decks</a>
   </p>
-  <p class="actions-row">
+  <div class="actions-row">
     {% if undo.can_undo %}
       <form method="post" action="/deck/{{ deck_id }}/undo" class="form form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
@@ -45,5 +45,5 @@
         </form>
       {% endif %}
     {% endif %}
-  </p>
+  </div>
 {% endblock %}

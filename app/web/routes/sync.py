@@ -59,36 +59,6 @@ async def _collection_is_empty(account: Account) -> bool:
     return count == 0
 
 
-def _clear_conflict_state(state: SyncState) -> None:
-    """Resets all per-account conflict-resolution fields."""
-
-    state.conflict_pending = False
-    state.conflict_new_endpoint = None
-    state.conflict_server_message = ""
-    state.conflict_direction = ""
-
-
-def _start_conflict_state(
-    state: SyncState,
-    *,
-    full_sync_kind: FullSyncKind,
-    new_endpoint: str | None,
-    server_message: str,
-) -> None:
-    """Initialises the per-account conflict-resolution state."""
-
-    state.conflict_pending = True
-    state.conflict_new_endpoint = new_endpoint
-    state.conflict_server_message = server_message
-    # For one-sided cases we set the direction up-front so the conflict
-    # page is bypassed in favour of an immediate confirm screen.
-    state.conflict_direction = (
-        full_sync_kind.value
-        if full_sync_kind in (FullSyncKind.DOWNLOAD, FullSyncKind.UPLOAD)
-        else ""
-    )
-
-
 async def _run_media_sync_background(
     account: Account,
     host_key: str,
@@ -207,7 +177,7 @@ async def sync_post(
     # If an unresolved full-sync conflict is pending, route the user back to the
     # choice page instead of starting a new sync.
     if account.sync_state.conflict_pending:
-        if account.sync_state.conflict_direction:
+        if account.sync_state.is_one_sided_conflict:
             return RedirectResponse("/sync/full/confirm", status_code=303)
         return RedirectResponse("/sync/conflict", status_code=303)
 
@@ -231,8 +201,7 @@ async def sync_post(
         return RedirectResponse(f"/?sync_error={result.error}", status_code=303)
 
     if result.full_sync_kind is not None:
-        _start_conflict_state(
-            account.sync_state,
+        account.sync_state.begin_conflict(
             full_sync_kind=result.full_sync_kind,
             new_endpoint=result.new_endpoint,
             server_message=result.server_message,
@@ -325,7 +294,7 @@ async def sync_conflict_get(
     state = account.sync_state
     if not state.conflict_pending:
         return HTMLResponse(status_code=303, headers={"Location": "/"})
-    if state.conflict_direction:
+    if state.is_one_sided_conflict:
         # The user already picked a direction — straight to the confirm page.
         return HTMLResponse(
             status_code=303, headers={"Location": "/sync/full/confirm"}
@@ -356,7 +325,7 @@ async def sync_conflict_post(
         return RedirectResponse("/", status_code=303)
 
     if direction == "cancel":
-        _clear_conflict_state(state)
+        state.reset_conflict()
         return RedirectResponse("/", status_code=303)
 
     if direction in ("upload", "download"):
@@ -408,7 +377,7 @@ async def sync_full_post(
 
     host_key = account.host_key()
     if not host_key:
-        _clear_conflict_state(state)
+        state.reset_conflict()
         account.delete_host_key()
         return RedirectResponse("/login?reason=auth_expired", status_code=303)
 
@@ -417,7 +386,7 @@ async def sync_full_post(
 
     # Capture and clear conflict state up-front so a later navigation to
     # /sync/conflict doesn't try to re-use the now-consumed decision.
-    _clear_conflict_state(state)
+    state.reset_conflict()
 
     manager = account.manager
     try:

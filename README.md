@@ -64,8 +64,8 @@ The application image serves HTTP on port `8000`. TLS is expected to be terminat
 Clone repository. Then from the repository root:
 
 ```bash
-cp .env.example .env
-docker compose -f deploy/docker-compose.yml --project-directory . up --build
+cp deploy/.env.example .env && cp deploy/docker-compose.yml docker-compose.yml
+docker compose up --build
 ```
 
 The Compose stack starts:
@@ -77,12 +77,12 @@ The application is available at `http://localhost:8000`. Persistent data is stor
 
 ## Configuration
 
-Settings are read from environment variables or `.env` using the `ANKIPAPER_` prefix. `.env.example` contains a Docker-ready Redis URL; the application code default is intended for local execution outside Compose.
+Settings are read from environment variables or `.env` using the `ANKIPAPER_` prefix. `deploy/.env.example` contains an example.
 
 | Variable | Default | Purpose |
 |---|---:|---|
 | `ANKIPAPER_COOKIE_MAX_AGE_DAYS` | `30` | Signed session lifetime in days. |
-| `ANKIPAPER_BEHIND_PROXY` | `false` | Set to `true` behind nginx or another trusted reverse proxy. Enables `Secure` cookies and proxy-aware client IP detection. |
+| `ANKIPAPER_BEHIND_PROXY` | `false` | Set to `true` behind nginx, cloudflared, or another trusted reverse proxy. Enables `Secure` cookies and proxy-aware client IP detection. |
 | `ANKIPAPER_SHOW_PRIVACY_POLICY` | `false` | Adds a link to `/static/privacy_policy.html` in login and deck-list footers. |
 | `ANKIPAPER_DEBUG_HEADERS` | `false` | Logs all incoming request headers for proxy debugging. Keep disabled in production because cookies and authorization headers may be logged. |
 | `ANKIPAPER_REDIS_URL` | `redis://localhost:6379/0` | Redis URL for login and sync rate limiting. In Docker Compose use `redis://redis:6379/0`. |
@@ -104,5 +104,3 @@ For a reverse-proxy deployment:
 
 1. Set `ANKIPAPER_BEHIND_PROXY=true`.
 2. Make sure `X-Forwarded-Proto` header contains the real client IP. The application also understands Cloudflare's `CF-Connecting-IP` header when proxy mode is enabled.
-
-`deploy/nginx.conf` includes the example of reverse-proxy locations and security headers expected by the application. Configure TLS certificates and the public hostname for your environment before using it.

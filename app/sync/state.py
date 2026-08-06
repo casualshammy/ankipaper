@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.sync.client import FullSyncKind
 
 
-@dataclass
+@dataclass(slots=True)
 class SyncState:
     """State of the current/last sync with AnkiWeb.
 
@@ -52,20 +55,75 @@ class SyncState:
     # button only fires for an explicit ``True``.
     changes_pending: bool | None = None
 
+    # -- Conflict (full-sync) lifecycle --------------------------------
+
+    def begin_conflict(
+        self,
+        *,
+        full_sync_kind: "FullSyncKind",
+        new_endpoint: str | None,
+        server_message: str,
+    ) -> None:
+        """Initialises the per-account full-sync-conflict state.
+
+        For one-sided full syncs (``DOWNLOAD`` / ``UPLOAD``) the direction
+        is set up-front so the conflict page is bypassed in favour of an
+        immediate confirm screen.
+        """
+
+        from app.sync.client import FullSyncKind  # local import: avoid cycle
+
+        self.conflict_pending = True
+        self.conflict_new_endpoint = new_endpoint
+        self.conflict_server_message = server_message
+        self.conflict_direction = (
+            full_sync_kind.value
+            if full_sync_kind in (FullSyncKind.DOWNLOAD, FullSyncKind.UPLOAD)
+            else ""
+        )
+
+    def reset_conflict(self) -> None:
+        """Clears all per-account conflict-resolution fields."""
+
+        self.conflict_pending = False
+        self.conflict_new_endpoint = None
+        self.conflict_server_message = ""
+        self.conflict_direction = ""
+
+    # -- Derived properties ---------------------------------------------
+
+    @property
+    def elapsed(self) -> float:
+        """Seconds since ``started_at`` (or 0 if the sync never started)."""
+
+        if not self.started_at:
+            return 0.0
+        return (self.finished_at or time.time()) - self.started_at
+
+    @property
+    def percent(self) -> int:
+        """Progress in 0..100, clamped."""
+
+        if self.total <= 0:
+            return 0
+        return max(0, min(100, int(100 * self.current / self.total)))
+
+    @property
+    def is_one_sided_conflict(self) -> bool:
+        """Whether the user has already chosen (or been forced into) a direction.
+
+        Used to bypass the conflict-choice page when the server already
+        constrained the user to one direction.
+        """
+
+        return bool(self.conflict_direction)
+
+    # -- JSON serialisation ---------------------------------------------
+
     def to_dict(self) -> dict[str, Any]:
         """Returns a dict ready for JSON serialisation."""
 
         d = asdict(self)
-        d["elapsed"] = (
-            (self.finished_at or time.time()) - self.started_at
-            if self.started_at
-            else 0.0
-        )
+        d["elapsed"] = self.elapsed
         d["percent"] = self.percent
         return d
-
-    @property
-    def percent(self) -> int:
-        if self.total <= 0:
-            return 0
-        return max(0, min(100, int(100 * self.current / self.total)))
