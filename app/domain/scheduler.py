@@ -403,7 +403,7 @@ def set_card_marked(
             note.add_tag("marked")
         else:
             note.remove_tag("marked")
-        note.flush()
+        col.update_note(note)
     return bool(note.has_tag("marked"))
 
 
