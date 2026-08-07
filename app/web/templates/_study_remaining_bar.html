@@ -10,25 +10,84 @@
     </div>
   </div>
   <div class="flag-toolbar">
-    <form method="post" action="/deck/{{ deck_id }}/mark" class="mark-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-      <input type="hidden" name="card_id" value="{{ card.card_id }}">
-      <input type="hidden" name="marked" value="{{ '0' if card.is_marked else '1' }}">
-      <button type="submit" class="mark-btn{% if card.is_marked %} mark-btn-on{% endif %}" aria-label="{% if card.is_marked %}Unmark{% else %}Mark{% endif %}">
-        {% if card.is_marked %}★{% else %}☆{% endif %}
-      </button>
-    </form>
-    <form method="post" action="/deck/{{ deck_id }}/flag" class="flag-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-      <input type="hidden" name="card_id" value="{{ card.card_id }}">
-      <select id="flag-select" name="flag" class="flag-select" onchange="this.form.submit()" aria-label="Flag">
-        <option value="0" {% if card.flag == 0 %}selected{% endif %}>None</option>
-        <option value="1" {% if card.flag == 1 %}selected{% endif %}>Red ⚑</option>
-        <option value="2" {% if card.flag == 2 %}selected{% endif %}>Yellow ⚑</option>
-        <option value="3" {% if card.flag == 3 %}selected{% endif %}>Green ⚑</option>
-        <option value="4" {% if card.flag == 4 %}selected{% endif %}>Blue ⚑</option>
-      </select>
-      <noscript><button type="submit" class="btn btn-small">Set</button></noscript>
-    </form>
+    <button type="button"
+            class="mark-btn{% if card.is_marked %} mark-btn-on{% endif %}"
+            aria-label="{% if card.is_marked %}Unmark{% else %}Mark{% endif %}">
+      {% if card.is_marked %}★{% else %}☆{% endif %}
+    </button>
+    <select class="flag-select" aria-label="Flag">
+      <option value="0" {% if card.flag == 0 %}selected{% endif %}></option>
+      <option value="1" {% if card.flag == 1 %}selected{% endif %}>Red ⚑</option>
+      <option value="2" {% if card.flag == 2 %}selected{% endif %}>Yellow ⚑</option>
+      <option value="3" {% if card.flag == 3 %}selected{% endif %}>Green ⚑</option>
+      <option value="4" {% if card.flag == 4 %}selected{% endif %}>Blue ⚑</option>
+    </select>
   </div>
 </div>
+
+<script>
+  (function () {
+    const bar = document.querySelector(".flag-toolbar");
+    const cardId = parseInt("{{ card.card_id }}", 10);
+    let marked = "{{ '1' if card.is_marked else '0' }}";
+    let flag = "{{ card.flag }}";
+
+    function post(action, body) {
+      return fetch(action, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "{{ csrf_token(request) }}",
+        },
+        body: JSON.stringify(Object.assign({ card_id: cardId }, body)),
+      });
+    }
+
+    const btn = bar.querySelector(".mark-btn");
+    btn.addEventListener("click", async function () {
+      btn.disabled = true;
+      try {
+        const next = marked === "1" ? "0" : "1";
+        const on = next === "1";
+        const res = await post("/set-card-mark", { marked: on });
+        if (!res.ok) {
+          if (res.status === 401)
+            window.location = "/login";
+
+          return;
+        }
+        marked = next;
+        btn.textContent = on ? "\u2605" : "\u2606";
+        btn.classList.toggle("mark-btn-on", on);
+        btn.setAttribute("aria-label", on ? "Unmark" : "Mark");
+      }
+      finally {
+        btn.disabled = false;
+      }
+    });
+
+    var select = bar.querySelector(".flag-select");
+    select.addEventListener("change", async function () {
+      select.disabled = true;
+      try {
+        var val = parseInt(select.value, 10);
+        var prev = flag || "0";
+        const res = await post("/set-card-flag", { flag: val });
+        if (!res.ok) {
+          select.value = prev;
+          if (res.status === 401)
+            window.location = "/login";
+        }
+        else
+          flag = String(val);
+      }
+      catch {
+        select.value = prev;
+      }
+      finally {
+        select.disabled = false;
+      }
+    });
+  })();
+</script>

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Body, Depends, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app import __version__
@@ -227,71 +227,61 @@ async def undo_post(
     return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
 
-@router.post("/deck/{deck_id}/flag", response_model=None)
+@router.post("/set-card-flag", response_model=None)
 async def flag_post(
-    deck_id: int,
-    card_id: str = Form(""),
-    flag: str = Form(""),
+    payload: dict = Body(default_factory=dict),
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
-) -> RedirectResponse:
-    """Sets the user flag (0..4) on a card and returns to the study page."""
+) -> Response:
+    """Sets the user flag (0..4) on a card."""
 
     if account is None:
-        return RedirectResponse("/login", status_code=303)
+        return Response(status_code=401)
 
-    if card_id and flag:
-        try:
-            card_id_int = int(card_id)
-            flag_int = int(flag)
-        except ValueError:
-            return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+    card_id = payload.get("card_id", "")
+    flag = payload.get("flag", "")
 
-        try:
-            await account.manager.run(set_card_flag, card_id_int, flag_int)
-        except ValueError:
-            logger.warning(
-                "flag_post: invalid flag card_id=%s flag=%s deck_id=%s",
-                card_id,
-                flag,
-                deck_id,
-            )
+    if not type(card_id) is int:
+        logger.warning("set-card-flag: invalid card_id=%s", str(card_id)[:100])
+        return Response(status_code=400, content = "invalid card_id")
+    if not type(flag) is int:
+        logger.warning("set-card-flag: invalid flag=%s", str(flag)[:100])
+        return Response(status_code=400, content = "invalid flag")
 
-    return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+    try:
+        await account.manager.run(set_card_flag, card_id, flag)
+        return Response(status_code=204)
+    except ValueError as exc:
+        excStr= str(exc)
+        logger.warning("set-card-flag: %s", excStr[:100])
+        return Response(status_code=400, content = excStr)
 
-
-@router.post("/deck/{deck_id}/mark", response_model=None)
+        
+@router.post("/set-card-mark", response_model=None)
 async def mark_post(
-    deck_id: int,
-    card_id: str = Form(""),
-    marked: str = Form(""),
+    payload: dict = Body(default_factory=dict),
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
-) -> RedirectResponse:
-    """Toggles the "marked" (star) state on a card and returns to the study page.
-
-    The hidden ``marked`` field carries the desired state (``"0"`` / ``"1"``)
-    so the template can pre-compute the toggle target without any JS.
-    """
+) -> Response:
+    """Sets the "marked" (star) state on a card."""
 
     if account is None:
-        return RedirectResponse("/login", status_code=303)
+        return Response(status_code=401)
 
-    if card_id and marked:
-        try:
-            card_id_int = int(card_id)
-            marked_bool = marked == "1"
-        except ValueError:
-            return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+    card_id = payload.get("card_id", "")
+    marked = payload.get("marked", "")
 
-        try:
-            await account.manager.run(set_card_marked, card_id_int, marked_bool)
-        except ValueError:
-            logger.warning(
-                "mark_post: invalid mark card_id=%s marked=%s deck_id=%s",
-                card_id,
-                marked,
-                deck_id,
-            )
-
-    return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+    if not type(card_id) is int:
+        logger.warning("set-card-mark: invalid card_id=%s", str(card_id)[:100])
+        return Response(status_code=400, content = "invalid card_id")
+    if not type(marked) is bool:
+        logger.warning("set-card-mark: invalid marked=%s", str(marked)[:100])
+        return Response(status_code=400, content = "invalid marked")
+    
+    try:
+        await account.manager.run(set_card_marked, card_id, marked)
+        return Response(status_code=204)
+    except ValueError as exc:
+        excStr= str(exc)
+        logger.warning("set-card-mark: %s", excStr[:100])
+        return Response(status_code=400, content = excStr)

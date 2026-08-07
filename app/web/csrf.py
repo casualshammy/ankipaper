@@ -95,12 +95,14 @@ async def require_csrf(
     if not session.is_authenticated:
         return
 
-    try:
-        form = await request.form()
-    except Exception:  # noqa: BLE001 — multipart parse failures are treated as no token
-        form = {}
+    token = request.headers.get("X-CSRF-Token", "")
+    if not token:
+        try:
+            form = await request.form()
+        except Exception:  # noqa: BLE001 — multipart parse failures are treated as no token
+            form = {}
 
-    token = str(form.get("csrf_token", "")) if isinstance(form, dict) else str(form.get("csrf_token", ""))
+        token = str(form.get("csrf_token", ""))
     expected_sid = session.account_id or ""
     if not verify_csrf_token(token, expected_sid):
         raise HTTPException(
