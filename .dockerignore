@@ -3,6 +3,7 @@
 .redis/
 .venv/
 deploy/
+docs/
 .gitignore
 AGENTS.md
 *.pyc

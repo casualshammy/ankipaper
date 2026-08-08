@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% macro cell_num(value) -%}
+  <td class="num">{% if value != 0 %}<span class="num-non-zero">{{ value }}</span>{% else %}{{ value }}{% endif %}</td>
+{%- endmacro %}
+
 {% block title %}Decks — AnkiPaper{% endblock %}
 
 {% block robots %}noindex, nofollow{% endblock %}
@@ -76,9 +80,9 @@
         {% for d in decks %}
           <tr>
             <td><a class="deck-link" href="/deck/{{ d.deck_id }}/study">{{ d.name }}</a></td>
-            <td class="num">{{ d.new }}</td>
-            <td class="num">{{ d.learning }}</td>
-            <td class="num">{{ d.review }}</td>
+            {{ cell_num(d.new) }}
+            {{ cell_num(d.learning) }}
+            {{ cell_num(d.review) }}
           </tr>
         {% endfor %}
       </tbody>

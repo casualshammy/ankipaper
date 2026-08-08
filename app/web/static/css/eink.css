@@ -211,6 +211,11 @@ table.decks .num {
   white-space: nowrap;
 }
 
+table.decks td.num .num-non-zero {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
 .deck-link {
   font-weight: bold;
 }
