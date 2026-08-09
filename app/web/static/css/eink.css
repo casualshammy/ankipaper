@@ -301,10 +301,6 @@ img:not([src]) {
 }
 
 /* Flag controls -------------------------------------------------------- */
-/* User flags (red/yellow/green/blue) can't be shown as colours on e-ink,
-   so we use a native ``<select>`` with text labels. Picking an option
-   auto-submits the form via inline ``onchange``. The "marked" (star)
-   button sits above the flag select in the same toolbar cluster. */
 .flag-toolbar {
   display: flex;
   flex-direction: column;

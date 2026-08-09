@@ -16,7 +16,7 @@
       {% if card.is_marked %}★{% else %}☆{% endif %}
     </button>
     <select class="flag-select" aria-label="Flag">
-      <option value="0" {% if card.flag == 0 %}selected{% endif %}></option>
+      <option value="0" {% if card.flag == 0 %}selected{% endif %}>—</option>
       <option value="1" {% if card.flag == 1 %}selected{% endif %}>Red ⚑</option>
       <option value="2" {% if card.flag == 2 %}selected{% endif %}>Yellow ⚑</option>
       <option value="3" {% if card.flag == 3 %}selected{% endif %}>Green ⚑</option>
