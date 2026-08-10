@@ -60,7 +60,7 @@ class SyncState:
     def begin_conflict(
         self,
         *,
-        full_sync_kind: "FullSyncKind",
+        full_sync_kind: FullSyncKind,
         new_endpoint: str | None,
         server_message: str,
     ) -> None:

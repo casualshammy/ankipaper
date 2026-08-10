@@ -24,14 +24,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = []
+dev = ["mypy>=2.3.0", "ruff>=0.16.2"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
 
 [tool.ruff]
-line-length = 100
+line-length = 130
 target-version = "py311"
 
 [tool.ruff.lint]

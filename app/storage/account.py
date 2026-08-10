@@ -78,7 +78,7 @@ class Account:
 
     def __post_init__(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.manager = CollectionManager(self.data_dir / _COLLECTION_FILE)
+        self.manager = CollectionManager(self.username, self.data_dir / _COLLECTION_FILE)
         self.sync_state = SyncState()
 
     def host_key(self) -> str | None:

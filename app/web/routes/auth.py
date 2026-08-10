@@ -11,10 +11,10 @@ from fastapi.templating import Jinja2Templates
 from app import __version__
 from app.storage.account import get_account_store
 from app.sync.auth import AuthError, login
+from app.web.csrf import require_csrf
 from app.web.deps import get_session
 from app.web.ratelimit import client_ip, get_login_rate_limiter
 from app.web.session import Session, clear_session, write_session
-from app.web.csrf import require_csrf
 
 logger = logging.getLogger(__name__)
 

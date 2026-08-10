@@ -246,15 +246,15 @@ async def delete_note_get(
 
     view = await account.manager.run(get_card_view, cid, "new", None)
     if view is None:
-        errMsg = f"Card '{cid}' does not exist"
-        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(errMsg, safe='')}", status_code=303)
+        err_msg = f"Card '{cid}' does not exist"
+        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
 
-    trueDeck = await account.manager.run(card_deck_matches_or_descends, view.deck_id, deck_id)
-    if (not trueDeck):
+    true_deck = await account.manager.run(card_deck_matches_or_descends, view.deck_id, deck_id)
+    if (not true_deck):
         err = f"delete_note_get: invalid deck id '{deck_id}', card's deck id: '{view.deck_id}'"
         logger.warning(err)
-        errMsg = f"Card '{cid}' does not belong to the current deck '{deck_id}'"
-        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(errMsg, safe='')}", status_code=303)
+        err_msg = f"Card '{cid}' does not belong to the current deck '{deck_id}'"
+        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -287,15 +287,15 @@ async def delete_note_post(
         logger.info("delete_note_post: card_id=%s deck_id=%s deleted", cid, deck_id)
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
     except ValueError as exc:
-        excStr = str(exc)
+        exc_str = str(exc)
         logger.warning(
             "delete_note_post: card_id=%s deck_id=%s failed: %s",
             card_id[:100],
             deck_id,
-            excStr,
+            exc_str,
         )
         return RedirectResponse(
-            f"/deck/{deck_id}/study?error_msg={quote(excStr, safe='')}",
+            f"/deck/{deck_id}/study?error_msg={quote(exc_str, safe='')}",
             status_code=303,
         )
 
@@ -314,10 +314,10 @@ async def flag_post(
     card_id = payload.get("card_id", "")
     flag = payload.get("flag", "")
 
-    if not type(card_id) is int:
+    if type(card_id) is not int:
         logger.warning("set-card-flag: invalid card_id=%s", str(card_id)[:100])
         return Response(status_code=400, content = "invalid card_id")
-    if not type(flag) is int:
+    if type(flag) is not int:
         logger.warning("set-card-flag: invalid flag=%s", str(flag)[:100])
         return Response(status_code=400, content = "invalid flag")
 
@@ -325,9 +325,9 @@ async def flag_post(
         await account.manager.run(set_card_flag, card_id, flag)
         return Response(status_code=204)
     except ValueError as exc:
-        excStr = str(exc)
-        logger.warning("set-card-flag: %s", excStr[:100])
-        return Response(status_code=400, content = excStr)
+        exc_str = str(exc)
+        logger.warning("set-card-flag: %s", exc_str[:100])
+        return Response(status_code=400, content = exc_str)
 
         
 @router.post("/set-card-mark", response_model=None)
@@ -344,10 +344,10 @@ async def mark_post(
     card_id = payload.get("card_id", "")
     marked = payload.get("marked", "")
 
-    if not type(card_id) is int:
+    if type(card_id) is not int:
         logger.warning("set-card-mark: invalid card_id=%s", str(card_id)[:100])
         return Response(status_code=400, content = "invalid card_id")
-    if not type(marked) is bool:
+    if type(marked) is not bool:
         logger.warning("set-card-mark: invalid marked=%s", str(marked)[:100])
         return Response(status_code=400, content = "invalid marked")
     
@@ -355,6 +355,6 @@ async def mark_post(
         await account.manager.run(set_card_marked, card_id, marked)
         return Response(status_code=204)
     except ValueError as exc:
-        excStr= str(exc)
-        logger.warning("set-card-mark: %s", excStr[:100])
-        return Response(status_code=400, content = excStr)
+        exc_str= str(exc)
+        logger.warning("set-card-mark: %s", exc_str[:100])
+        return Response(status_code=400, content = exc_str)

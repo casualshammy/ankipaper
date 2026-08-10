@@ -15,11 +15,12 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
+from collections.abc import Callable
 
 import anki.collection
 
-logger = logging.getLogger(__name__)
+_common_logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -29,13 +30,14 @@ MEDIA_DIR_NAME = "collection.media"
 class CollectionManager:
     """Manager of the local Anki collection for a single account."""
 
-    def __init__(self, collection_path: Path) -> None:
+    def __init__(self, account_name, collection_path: Path) -> None:
         """Creates a manager for the collection at the given path.
 
         Args:
             collection_path: path to ``collection.anki21`` (not to the directory).
         """
 
+        self._logger = _common_logger.getChild(account_name)
         self._lock = asyncio.Lock()
         self._collection: anki.collection.Collection | None = None
         self._last_access: float = 0.0
@@ -81,8 +83,9 @@ class CollectionManager:
             if self._collection is not None:
                 try:
                     await asyncio.to_thread(self._collection.close)
+                    self._logger.info("Collection closed successfully")
                 except Exception:
-                    logger.exception("Failed to close collection")
+                    self._logger.exception("Failed to close collection")
                 self._collection = None
                 self._last_access = 0.0
 
@@ -106,5 +109,6 @@ class CollectionManager:
         path = self._path
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        logger.info("Opening collection at %s", path)
+        self._logger.info("Opening collection at %s...", path)
         self._collection = anki.collection.Collection(str(path))
+        self._logger.info("Collection opened successfully")

@@ -12,12 +12,13 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.config import Settings
 from app.storage.account import Account
 from app.sync.auth import make_auth
 from app.sync.client import (
     AuthExpiredError,
     FullSyncKind,
-    SyncError as SyncClientError,
+    SyncError,
     full_download,
     full_upload,
     try_sync,
@@ -27,7 +28,7 @@ from app.sync.state import SyncState
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
 from app.web.ratelimit import check_sync_rate_limit
-from app.config import Settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +220,7 @@ async def sync_post(
         except AuthExpiredError:
             account.delete_host_key()
             return RedirectResponse("/login?reason=auth_expired", status_code=303)
-        except SyncClientError as exc:
+        except SyncError as exc:
             return RedirectResponse(f"/?sync_error={exc}", status_code=303)
         except Exception:
             logger.exception("Full download failed")
@@ -271,7 +272,7 @@ async def sync_status_json(
                 state.changes_pending = required
                 if new_endpoint:
                     state.conflict_new_endpoint = new_endpoint
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.debug("sync_status probe timed out for %s", account.id)
             except Exception:
                 logger.exception("sync_status probe failed for %s", account.id)
@@ -397,7 +398,7 @@ async def sync_full_post(
     except AuthExpiredError:
         account.delete_host_key()
         return RedirectResponse("/login?reason=auth_expired", status_code=303)
-    except SyncClientError as exc:
+    except SyncError as exc:
         return RedirectResponse(f"/?sync_error={exc}", status_code=303)
     except Exception:
         logger.exception("Full %s failed", direction)

@@ -26,6 +26,7 @@ Requires the optional ``redis`` package (``pip install redis>=5``).
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 import redis.asyncio as aioredis
@@ -80,10 +81,9 @@ async def _safe_close(client: aioredis.Redis | None) -> None:
 
     if client is None:
         return
-    try:
+
+    with contextlib.suppress(Exception):
         await client.aclose()
-    except Exception:
-        pass
 
 
 async def _ensure_client() -> aioredis.Redis:

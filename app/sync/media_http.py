@@ -17,10 +17,11 @@ This module is the orchestrator — it ties together the wire protocol
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from app.sync.endpoints import normalize_endpoint
 from app.sync.media_files import (
@@ -32,8 +33,8 @@ from app.sync.media_files import (
     safe_unlink,
 )
 from app.sync.media_protocol import (
-    SyncHttpError,
     USER_AGENT,
+    SyncHttpError,
     decode_response,
     decompress_if_zstd,
     make_session_key,
@@ -354,10 +355,8 @@ def _log_batch_start(i: int, batch: list[str], total: int) -> None:
     )
     if i == 0:
         # Log the full payload of the first request for 400 debugging.
-        try:
+        with contextlib.suppress(Exception):
             logger.debug("downloadFiles payload: %s", json.dumps({"files": batch})[:500])
-        except Exception:
-            pass
 
 
 def _fetch_zip(

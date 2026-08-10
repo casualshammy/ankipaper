@@ -12,7 +12,8 @@ import re
 import time
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Iterable, Iterator
+from typing import Literal
+from collections.abc import Iterable, Iterator
 
 import anki.collection
 import anki.errors
@@ -35,7 +36,8 @@ _FLAG_LABELS: dict[int, str] = {
 # Card-type keys, in priority order used by ``_normal_to_card_type``.
 # New / review / relearning / learning is also the order of fields on
 # ``SchedulingState.Normal`` (see scheduler.proto).
-_CARD_TYPE_FIELDS = ("new", "review", "relearning", "learning")
+_CARD_TYPE_FIELDS: tuple[Literal["new"], Literal["review"], Literal["relearning"], Literal["learning"]] = (
+    "new", "review", "relearning", "learning")
 
 # Tags stripped from card HTML for e-ink rendering.
 _MEDIA_TAGS = ("audio", "video", "source", "iframe", "object", "embed", "canvas")
@@ -705,7 +707,7 @@ def _extract_fields(notetype, note) -> list[tuple[str, str]]:
     fld_specs = notetype.get("flds", [])
     return [
         (_field_name(spec), _strip_html(value))
-        for spec, value in zip(fld_specs, list(note.fields))
+        for spec, value in zip(fld_specs, list(note.fields), strict=True)
     ]
 
 

@@ -99,10 +99,9 @@ async def require_csrf(
     if not token:
         try:
             form = await request.form()
+            token = str(form.get("csrf_token", ""))
         except Exception:
-            form = {}
-
-        token = str(form.get("csrf_token", ""))
+            pass
     expected_sid = session.account_id or ""
     if not verify_csrf_token(token, expected_sid):
         raise HTTPException(

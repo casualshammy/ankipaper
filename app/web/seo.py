@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 from app.config import Settings, get_settings
 
 
-def resolve_origin(request: "Request", settings: Settings) -> str:
+def resolve_origin(request: Request, settings: Settings) -> str:
     """Returns the absolute origin (scheme + host) for canonical/OG/SEO URLs.
 
     Returns an empty string when no public origin is configured and the
@@ -37,7 +37,7 @@ def resolve_origin(request: "Request", settings: Settings) -> str:
     return f"{request.url.scheme}://{request.url.netloc}"
 
 
-def canonical_url(request: "Request") -> str:
+def canonical_url(request: Request) -> str:
     """Returns the absolute canonical URL for the current request.
 
     The query string is intentionally stripped — canonical URLs identify
@@ -51,7 +51,7 @@ def canonical_url(request: "Request") -> str:
     return f"{base}{request.url.path}"
 
 
-def og_image_url(request: "Request") -> str:
+def og_image_url(request: Request) -> str:
     """Returns the absolute URL to the Open Graph image (``/static/og.png``).
 
     Falls back to a path-only URL when no public origin is configured;
@@ -65,7 +65,7 @@ def og_image_url(request: "Request") -> str:
     return f"{base}/static/og.png"
 
 
-def webapplication_jsonld(request: "Request") -> str:
+def webapplication_jsonld(request: Request) -> str:
     """Returns the JSON-LD ``WebApplication`` block for the landing page.
 
     Embedded as ``<script type="application/ld+json">`` in the landing

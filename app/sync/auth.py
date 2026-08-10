@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from collections.abc import Generator
@@ -55,14 +56,10 @@ def _temp_collection() -> Generator[anki.collection.Collection, None, None]:
     try:
         yield col
     finally:
-        try:
+        with contextlib.suppress(Exception):
             col.close()
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(path)
-        except OSError:
-            pass
 
 
 def login(username: str, password: str) -> str:

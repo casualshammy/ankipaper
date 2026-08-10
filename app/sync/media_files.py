@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
-from stat import S_ISREG
 import zipfile
 from io import BytesIO
 from pathlib import Path
+from stat import S_ISREG
 
 logger = logging.getLogger(__name__)
 
@@ -64,9 +64,9 @@ def media_dir_size(media_dir: Path) -> int:
     total = 0
     for entry in media_dir.rglob("*"):
         try:
-            fileStat = entry.stat()
-            if S_ISREG(fileStat.st_mode):
-                total += fileStat.st_size
+            file_stat = entry.stat()
+            if S_ISREG(file_stat.st_mode):
+                total += file_stat.st_size
         except OSError:
             # File removed between rglob and stat — ignore.
             continue

@@ -12,12 +12,14 @@
   },
   "license": "GPL-3.0",
   "author": "axio",
-  "type": "module",
   "main": "pyproject.toml",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "debug": "docker compose -f deploy/docker-compose.yml --project-directory . up --build"
+    "debug": "docker compose -f deploy/docker-compose.yml --project-directory . up --build",
+    "update": "git pull && docker compose down && docker compose up --build",
+    "logs": "docker compose logs -f",
+    "type-check": "python -m compileall app/ && mypy app/ && ruff check app/"
   }
 }
