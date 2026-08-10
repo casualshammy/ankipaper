@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Literal
-from collections.abc import Iterable, Iterator
 
 import anki.collection
 import anki.errors

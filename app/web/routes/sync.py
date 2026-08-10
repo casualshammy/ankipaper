@@ -29,7 +29,6 @@ from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
 from app.web.ratelimit import check_sync_rate_limit
 
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter()

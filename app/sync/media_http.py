@@ -20,8 +20,8 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 
 from app.sync.endpoints import normalize_endpoint
 from app.sync.media_files import (
