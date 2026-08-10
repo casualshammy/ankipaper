@@ -356,7 +356,7 @@ def _log_batch_start(i: int, batch: list[str], total: int) -> None:
         # Log the full payload of the first request for 400 debugging.
         try:
             logger.debug("downloadFiles payload: %s", json.dumps({"files": batch})[:500])
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
 
@@ -431,5 +431,5 @@ def _emit_progress(
         return
     try:
         callback(phase, current, total, downloaded)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("progress_callback raised during %s", phase)

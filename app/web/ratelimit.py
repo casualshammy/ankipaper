@@ -82,7 +82,7 @@ async def _safe_close(client: aioredis.Redis | None) -> None:
         return
     try:
         await client.aclose()
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -102,14 +102,14 @@ async def _ensure_client() -> aioredis.Redis:
         if _client is None:
             try:
                 _client = await _new_client()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 last_exc = exc
                 logger.warning("Redis connect attempt %d failed: %s", attempt, exc)
                 continue
         try:
             await _client.ping()
             return _client
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             last_exc = exc
             logger.warning("Redis ping attempt %d failed: %s", attempt, exc)
             await _safe_close(_client)
@@ -213,7 +213,7 @@ class LoginRateLimiter:
             _, user_b = self._buckets()
             user_key = f"{user_b.key_prefix}:{username.strip().lower()}"
             await client.delete(user_key)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("Rate limiter reset failed: %s", exc)
 
 

@@ -160,7 +160,7 @@ def _preview_body(exc: urllib.error.HTTPError) -> str:
     body_bytes = exc.read()[:_ERROR_BODY_PREVIEW_BYTES]
     try:
         return body_bytes.decode("utf-8", errors="replace")
-    except Exception:  # noqa: BLE001
+    except Exception:
         return repr(body_bytes)
 
 

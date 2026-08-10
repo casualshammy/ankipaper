@@ -211,7 +211,7 @@ def _safe_reopen_after_full_sync(col: Collection, action: str) -> None:
 
     try:
         col.reopen(after_full_sync=True)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.warning("col.reopen after failed full %s failed; continuing", action)
 
 

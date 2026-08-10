@@ -53,7 +53,7 @@ async def _collection_is_empty(account: Account) -> bool:
         return True
     try:
         count = await manager.run(_count_cards)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Failed to count cards in collection")
         return True
     return count == 0
@@ -107,7 +107,7 @@ async def _run_media_sync_background(
             "Media sync completed in %.1fs",
             state.finished_at - state.started_at,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("Background media sync failed")
         state.status = "error"
         state.error = str(exc)
@@ -189,7 +189,7 @@ async def sync_post(
 
     try:
         result = await manager.run(try_sync, host_key)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.exception("Unhandled sync error")
         return RedirectResponse(f"/?sync_error={exc}", status_code=303)
 
@@ -221,7 +221,7 @@ async def sync_post(
             return RedirectResponse("/login?reason=auth_expired", status_code=303)
         except SyncClientError as exc:
             return RedirectResponse(f"/?sync_error={exc}", status_code=303)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("Full download failed")
             return RedirectResponse("/?sync_error=full_download_failed", status_code=303)
 
@@ -273,7 +273,7 @@ async def sync_status_json(
                     state.conflict_new_endpoint = new_endpoint
             except asyncio.TimeoutError:
                 logger.debug("sync_status probe timed out for %s", account.id)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 logger.exception("sync_status probe failed for %s", account.id)
 
     return JSONResponse(state.to_dict())
@@ -399,7 +399,7 @@ async def sync_full_post(
         return RedirectResponse("/login?reason=auth_expired", status_code=303)
     except SyncClientError as exc:
         return RedirectResponse(f"/?sync_error={exc}", status_code=303)
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.exception("Full %s failed", direction)
         return RedirectResponse(f"/?sync_error=full_{direction}_failed", status_code=303)
 

@@ -57,7 +57,7 @@ def _temp_collection() -> Generator[anki.collection.Collection, None, None]:
     finally:
         try:
             col.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         try:
             os.unlink(path)

@@ -11,16 +11,6 @@
 
   <p>No more cards due in this deck right now.</p>
 
-  {% if sync_attempted %}
-    {% if sync_error %}
-      <p class="error">Sync failed: {{ sync_error }}</p>
-    {% elif synced %}
-      <p class="notice">Synced to AnkiWeb.</p>
-    {% else %}
-      <p class="muted">Nothing to sync.</p>
-    {% endif %}
-  {% endif %}
-
   <p>
     <a class="btn" href="/">Back to decks</a>
   </p>

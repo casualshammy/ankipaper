@@ -45,7 +45,7 @@ async def idle_collection_sweeper(store: AccountStore) -> None:
                 try:
                     await manager.close()
                     closed += 1
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception("Failed to close idle collection")
         if closed:
             logger.info("Idle eviction: closed %d collection(s)", closed)

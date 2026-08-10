@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, Form, Request
+from fastapi import APIRouter, Body, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -13,6 +14,8 @@ from app.domain.scheduler import (
     CardIntervals,
     Rating,
     answer_card,
+    card_deck_matches_or_descends,
+    delete_note_by_card,
     get_card_view,
     get_deck_card_count,
     get_deck_due_breakdown,
@@ -36,14 +39,9 @@ async def _session_done(
     request: Request,
     account: Account,
     deck_id: int,
-    attempt_sync: bool = True,
 ) -> HTMLResponse:
-    """Renders the session-complete page with an optional auto-sync."""
+    """Renders the session-complete page."""
 
-    if attempt_sync:
-        synced, sync_err, attempted = await _auto_sync_if_possible(account)
-    else:
-        synced, sync_err, attempted = False, None, False
     templates: Jinja2Templates = request.app.state.templates
     is_filtered = await account.manager.run(_deck_is_filtered, deck_id)
     has_cards = bool(await account.manager.run(get_deck_card_count, deck_id))
@@ -61,9 +59,6 @@ async def _session_done(
             "remaining_new": 0,
             "remaining_learning": 0,
             "remaining_review": 0,
-            "synced": synced,
-            "sync_error": sync_err,
-            "sync_attempted": attempted,
             "undo": undo,
         },
     )
@@ -90,6 +85,7 @@ async def _auto_sync_if_possible(account: Account) -> tuple[bool, str | None, bo
 async def study_get(
     request: Request,
     deck_id: int,
+    error_msg: str = Query(""),
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
     """Shows the front of the next due card or the session-complete page."""
@@ -102,7 +98,7 @@ async def study_get(
 
     view = await manager.run(get_next_card, deck_id)
     if view is None:
-        return await _session_done(request, account, deck_id, attempt_sync=False)
+        return await _session_done(request, account, deck_id)
 
     breakdown = await manager.run(get_deck_due_breakdown, deck_id)
     is_filtered = await manager.run(_deck_is_filtered, deck_id)
@@ -123,6 +119,7 @@ async def study_get(
             "remaining_learning": breakdown.learning,
             "remaining_review": breakdown.review,
             "undo": undo,
+            "error_msg": error_msg,
         },
     )
 
@@ -227,6 +224,82 @@ async def undo_post(
     return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
 
+@router.get("/deck/{deck_id}/delete-note", response_model=None)
+async def delete_note_get(
+    request: Request,
+    deck_id: int,
+    card_id: str = Query(""),
+    account: Account | None = Depends(get_current_account_optional),
+) -> HTMLResponse | RedirectResponse:
+    """Render the delete-confirmation page for the given card."""
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+
+    try:
+        cid = int(card_id)
+    except ValueError:
+        card_id_truncated = card_id[:100]
+        logger.warning(f"delete_note_get: can't parse card_id: '{card_id_truncated}'")
+        err_msg = f"Card id '{card_id_truncated}' is not a valid number"
+        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
+
+    view = await account.manager.run(get_card_view, cid, "new", None)
+    if view is None:
+        errMsg = f"Card '{cid}' does not exist"
+        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(errMsg, safe='')}", status_code=303)
+
+    trueDeck = await account.manager.run(card_deck_matches_or_descends, view.deck_id, deck_id)
+    if (not trueDeck):
+        err = f"delete_note_get: invalid deck id '{deck_id}', card's deck id: '{view.deck_id}'"
+        logger.warning(err)
+        errMsg = f"Card '{cid}' does not belong to the current deck '{deck_id}'"
+        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(errMsg, safe='')}", status_code=303)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "delete_card_confirm.html",
+        {
+            "version": __version__,
+            "account": account,
+            "deck_id": deck_id,
+            "card": view,
+        },
+    )
+
+
+@router.post("/deck/{deck_id}/delete-note", response_model=None)
+async def delete_note_post(
+    deck_id: int,
+    card_id: str = Form(""),
+    account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
+) -> RedirectResponse:
+    """Delete the note behind the card and return to the study page."""
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+
+    try:
+        cid = int(card_id)
+        await account.manager.run(delete_note_by_card, deck_id, cid)
+        logger.info("delete_note_post: card_id=%s deck_id=%s deleted", cid, deck_id)
+        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+    except ValueError as exc:
+        excStr = str(exc)
+        logger.warning(
+            "delete_note_post: card_id=%s deck_id=%s failed: %s",
+            card_id[:100],
+            deck_id,
+            excStr,
+        )
+        return RedirectResponse(
+            f"/deck/{deck_id}/study?error_msg={quote(excStr, safe='')}",
+            status_code=303,
+        )
+
+
 @router.post("/set-card-flag", response_model=None)
 async def flag_post(
     payload: dict = Body(default_factory=dict),
@@ -252,7 +325,7 @@ async def flag_post(
         await account.manager.run(set_card_flag, card_id, flag)
         return Response(status_code=204)
     except ValueError as exc:
-        excStr= str(exc)
+        excStr = str(exc)
         logger.warning("set-card-flag: %s", excStr[:100])
         return Response(status_code=400, content = excStr)
 

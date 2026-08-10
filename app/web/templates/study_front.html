@@ -9,6 +9,10 @@
 {% block content %}
   {% include "_study_remaining_bar.html" %}
 
+  {% if error_msg %}
+    <p class="error">{{ error_msg }}</p>
+  {% endif %}
+
   <article class="card">
     {{ card.question_html | safe }}
   </article>

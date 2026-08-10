@@ -56,7 +56,7 @@ async def home(
     if has_collection:
         try:
             decks = await manager.run(list_deck_stats)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             error = f"Failed to read deck stats: {exc}"
 
     return templates.TemplateResponse(
@@ -93,7 +93,7 @@ async def deck_rebuild_post(
 
     try:
         count = await account.manager.run(rebuild_filtered_deck, deck_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("rebuild_filtered_deck failed: deck_id=%s err=%s", deck_id, exc)
         return RedirectResponse(
             f"/?rebuild_error={exc}", status_code=303
@@ -115,7 +115,7 @@ async def deck_empty_post(
 
     try:
         count = await account.manager.run(empty_filtered_deck, deck_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("empty_filtered_deck failed: deck_id=%s err=%s", deck_id, exc)
         return RedirectResponse(f"/?empty_error={exc}", status_code=303)
     logger.info("empty_filtered_deck: deck_id=%s count=%s", deck_id, count)

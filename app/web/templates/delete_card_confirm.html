@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Delete note — AnkiPaper{% endblock %}
+
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block brand_text %}{% endblock %}
+
+{% block content %}
+  <h1>Delete this note?</h1>
+
+  <p class="muted">
+    This will permanently remove the note and all its cards.
+    You can undo this with the Undo button afterwards.
+  </p>
+
+  <article class="card">
+    {{ card.question_html | safe }}
+  </article>
+
+  <div class="actions-row">
+    <a class="btn" href="/deck/{{ deck_id }}/study">Cancel</a>
+    <form method="post" action="/deck/{{ deck_id }}/delete-note" class="form form-inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="card_id" value="{{ card.card_id }}">
+      <button type="submit" class="btn btn-primary">Confirm</button>
+    </form>
+  </div>
+{% endblock %}

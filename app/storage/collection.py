@@ -81,7 +81,7 @@ class CollectionManager:
             if self._collection is not None:
                 try:
                     await asyncio.to_thread(self._collection.close)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     logger.exception("Failed to close collection")
                 self._collection = None
                 self._last_access = 0.0

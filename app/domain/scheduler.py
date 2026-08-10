@@ -121,6 +121,7 @@ class CardView:
     """Card view prepared for review."""
 
     card_id: int
+    deck_id: int
     question_html: str
     answer_html: str
     is_cloze: bool
@@ -352,6 +353,27 @@ def _get_card_or_raise(col: anki.collection.Collection, card_id: int):
         raise ValueError(f"card not found: {card_id}") from exc
 
 
+def card_deck_matches_or_descends(
+    col: anki.collection.Collection,
+    card_deck_id: int,
+    target_deck_id: int,
+) -> bool:
+    """True if ``card_deck_id == target_deck_id`` or is a descendant of it.
+
+    Walks the parent chain of ``card_deck_id`` upward and checks whether
+    ``target_deck_id`` appears in it. A card in a child deck belongs to
+    any ancestor deck it descends from.
+    """
+
+    if card_deck_id == target_deck_id:
+        return True
+    deck = col.decks.get(DeckId(card_deck_id))
+    if deck is None:
+        return False
+    parents = col.decks.parents(DeckId(card_deck_id))
+    return any(int(p["id"]) == target_deck_id for p in parents)
+
+
 def set_card_flag(
     col: anki.collection.Collection,
     card_id: int,
@@ -376,6 +398,28 @@ def set_card_flag(
     _get_card_or_raise(col, card_id)
     result = col.set_user_flag_for_cards(flag, [CardId(card_id)])
     return int(result.count)
+
+
+def delete_note_by_card(
+    col: anki.collection.Collection,
+    deck_id: int,
+    card_id: int,
+) -> None:
+    """Remove the note behind the card (and all sibling cards).
+
+    Args:
+        col: open collection.
+        deck_id: target deck id.
+        card_id: target card id.
+
+    Raises:
+        ValueError: if the card does not exist, or not belongs to the specified deck.
+    """
+
+    card = _get_card_or_raise(col, card_id)
+    if not card_deck_matches_or_descends(col, int(card.did), deck_id):
+        raise ValueError(f"Card {card_id} (deck {int(card.did)}) is not in deck {deck_id}")
+    col.remove_notes_by_card([CardId(card_id)])
 
 
 def set_card_marked(
@@ -642,6 +686,7 @@ def _load_card_view(
 
     return CardView(
         card_id=int(card_id),
+        deck_id=card.did,
         question_html=_sanitize_for_eink(card.question()),
         answer_html=_sanitize_for_eink(card.answer()),
         is_cloze=notetype.get("type") == anki.collection.MODEL_CLOZE,

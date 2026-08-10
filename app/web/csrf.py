@@ -99,7 +99,7 @@ async def require_csrf(
     if not token:
         try:
             form = await request.form()
-        except Exception:  # noqa: BLE001 — multipart parse failures are treated as no token
+        except Exception:
             form = {}
 
         token = str(form.get("csrf_token", ""))
