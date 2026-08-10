@@ -15,13 +15,24 @@
             aria-label="{% if card.is_marked %}Unmark{% else %}Mark{% endif %}">
       {% if card.is_marked %}★{% else %}☆{% endif %}
     </button>
-    <select class="flag-select" aria-label="Flag">
-      <option value="0" {% if card.flag == 0 %}selected{% endif %}>—</option>
-      <option value="1" {% if card.flag == 1 %}selected{% endif %}>Red ⚑</option>
-      <option value="2" {% if card.flag == 2 %}selected{% endif %}>Yellow ⚑</option>
-      <option value="3" {% if card.flag == 3 %}selected{% endif %}>Green ⚑</option>
-      <option value="4" {% if card.flag == 4 %}selected{% endif %}>Blue ⚑</option>
-    </select>
+    <div class="flag-buttons">
+      <button type="button"
+              class="flag-btn{% if card.flag == 0 %} flag-btn-on{% endif %}"
+              data-flag="0"
+              aria-label="No flag">—</button>
+      <button type="button"
+              class="flag-btn{% if card.flag == 1 %} flag-btn-on{% endif %}"
+              data-flag="1"
+              aria-label="Red">R</button>
+      <button type="button"
+              class="flag-btn{% if card.flag == 2 %} flag-btn-on{% endif %}"
+              data-flag="2"
+              aria-label="Orange">O</button>
+      <button type="button"
+              class="flag-btn{% if card.flag == 3 %} flag-btn-on{% endif %}"
+              data-flag="3"
+              aria-label="Green">G</button>
+    </div>
   </div>
 </div>
 
@@ -45,49 +56,56 @@
     }
 
     const btn = bar.querySelector(".mark-btn");
-    btn.addEventListener("click", async function () {
+    btn.addEventListener("click", function () {
+      const next = marked === "1" ? "0" : "1";
+      const on = next === "1";
       btn.disabled = true;
-      try {
-        const next = marked === "1" ? "0" : "1";
-        const on = next === "1";
-        const res = await post("/set-card-mark", { marked: on });
-        if (!res.ok) {
-          if (res.status === 401)
-            window.location = "/login";
 
-          return;
-        }
-        marked = next;
-        btn.textContent = on ? "\u2605" : "\u2606";
-        btn.classList.toggle("mark-btn-on", on);
-        btn.setAttribute("aria-label", on ? "Unmark" : "Mark");
-      }
-      finally {
-        btn.disabled = false;
-      }
+      post("/set-card-mark", { marked: on })
+        .then(function (_res) {
+          if (!_res.ok) {
+            if (_res.status === 401)
+              window.location = "/login";
+
+            return;
+          }
+          marked = next;
+          btn.textContent = on ? "\u2605" : "\u2606";
+          btn.classList.toggle("mark-btn-on", on);
+          btn.setAttribute("aria-label", on ? "Unmark" : "Mark");
+        })
+        .finally(function () {
+          btn.disabled = false;
+        });
     });
 
-    var select = bar.querySelector(".flag-select");
-    select.addEventListener("change", async function () {
-      select.disabled = true;
-      try {
-        var val = parseInt(select.value, 10);
-        var prev = flag || "0";
-        const res = await post("/set-card-flag", { flag: val });
-        if (!res.ok) {
-          select.value = prev;
-          if (res.status === 401)
-            window.location = "/login";
-        }
-        else
-          flag = String(val);
-      }
-      catch {
-        select.value = prev;
-      }
-      finally {
-        select.disabled = false;
-      }
+    const flagButtons = bar.querySelectorAll(".flag-btn");
+    flagButtons.forEach(function (flagBtn) {
+      flagBtn.addEventListener("click", function () {
+        const val = parseInt(flagBtn.dataset.flag, 10);
+        const prev = flag || "0";
+        if (String(val) === prev)
+          return;
+
+        flagButtons.forEach(function (b) { b.disabled = true; });
+
+        post("/set-card-flag", { flag: val })
+          .then(function (_res) {
+            if (!_res.ok) {
+              if (_res.status === 401)
+                window.location = "/login";
+
+              return;
+            }
+
+            flagButtons.forEach(function (b) { b.classList.remove("flag-btn-on"); });
+            flagBtn.classList.add("flag-btn-on");
+            flag = String(val);
+          })
+          .finally(function () {
+            flagButtons.forEach(function (b) { b.disabled = false; });
+          });
+      });
     });
   })();
 </script>

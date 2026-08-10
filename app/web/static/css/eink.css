@@ -329,21 +329,28 @@ img:not([src]) {
   color: #ffffff;
 }
 
-.flag-form {
-  margin: 0;
-  display: inline-flex;
-  align-items: center;
+.flag-buttons {
+  display: flex;
+  gap: 4px;
 }
 
-.flag-select {
+.flag-btn {
   font-family: inherit;
-  font-size: 16px;
+  font-size: 18px;
+  line-height: 1;
   font-weight: bold;
-  padding: 4px 8px;
+  padding: 4px;
   border: 2px solid #000000;
   background: #ffffff;
   color: #000000;
-  min-width: 110px;
+  cursor: pointer;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.flag-btn-on {
+  background: #000000;
+  color: #ffffff;
 }
 
 /* Remaining breakdown ------------------------------------------------- */
