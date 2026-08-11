@@ -101,9 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.web.csrf import csrf_token as csrf_token_global
 
     app.state.templates.env.globals["csrf_token"] = csrf_token_global
-    app.state.templates.env.globals["show_privacy_policy"] = (
-        settings.show_privacy_policy
-    )
+    app.state.templates.env.globals["show_privacy_policy"] = settings.show_privacy_policy
 
     from app.web.seo import canonical_url, og_image_url, webapplication_jsonld
 
@@ -114,7 +112,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates.env.globals["webapplication_jsonld"] = webapplication_jsonld
 
     from app.web.routes import auth as auth_routes
-    from app.web.routes import home as home_routes
     from app.web.routes import media as media_routes
     from app.web.routes import seo as seo_routes
     from app.web.routes import static as static_routes
@@ -122,7 +119,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.web.routes import sync as sync_routes
 
     app.include_router(auth_routes.router)
-    app.include_router(home_routes.router)
     app.include_router(media_routes.router)
     app.include_router(seo_routes.router)
     app.include_router(static_routes.router)

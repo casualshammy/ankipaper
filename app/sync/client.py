@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import enum
 import logging
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from anki import sync_pb2
 from anki.collection import Collection
 from anki.errors import BackendError
 
+from app.storage.account import Account
 from app.sync.auth import is_auth_error, make_auth
 
 logger = logging.getLogger(__name__)
@@ -200,6 +202,21 @@ def full_upload(
     """
 
     return _do_full_sync(col, host_key, upload=True, endpoint=endpoint)
+
+
+async def is_sync_required_or_throw(
+    account: Account,
+    endpoint: str | None,
+) -> tuple[bool, str | None]:
+    """Calls ``col.sync_status`` and returns ``(required, new_endpoint)``."""
+
+    host_key = account.host_key()
+    if host_key is None:
+        raise AuthExpiredError()
+
+    auth = make_auth(host_key, endpoint)
+    status = await asyncio.wait_for(account.manager.run(lambda c: c.sync_status(auth)), timeout=3.0) 
+    return bool(status.required), status.new_endpoint or None
 
 
 def _safe_reopen_after_full_sync(col: Collection, action: str) -> None:

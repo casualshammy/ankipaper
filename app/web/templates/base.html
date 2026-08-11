@@ -28,7 +28,9 @@
       {% block nav %}
         <form method="post" action="/sync" class="nav-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-          <button type="submit" id="sync-btn" class="btn">Sync</button>
+          <button type="submit" id="sync-btn" class="btn">
+            Sync{% if sync_required %} ●{% endif %}
+          </button>
         </form>
       {% endblock %}
     </nav>

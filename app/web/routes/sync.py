@@ -14,13 +14,13 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import Settings
 from app.storage.account import Account
-from app.sync.auth import make_auth
 from app.sync.client import (
     AuthExpiredError,
     FullSyncKind,
     SyncError,
     full_download,
     full_upload,
+    is_sync_required_or_throw,
     try_sync,
 )
 from app.sync.media_http import sync_media_direct
@@ -132,18 +132,6 @@ def _start_media_sync_after_full(
             settings=settings,
         )
     )
-
-
-def _probe_changes(
-    col: Any,
-    host_key: str,
-    endpoint: str | None,
-) -> tuple[bool, str | None]:
-    """Calls ``col.sync_status`` and returns ``(required, new_endpoint)``."""
-
-    auth = make_auth(host_key, endpoint)
-    status = col.sync_status(auth)
-    return bool(status.required), status.new_endpoint or None
 
 
 # ---------------------------------------------------------------------------
@@ -262,12 +250,7 @@ async def sync_status_json(
         host_key = account.host_key()
         if host_key:
             try:
-                required, new_endpoint = await asyncio.wait_for(
-                    account.manager.run(
-                        _probe_changes, host_key, state.conflict_new_endpoint
-                    ),
-                    timeout=3.0,
-                )
+                required, new_endpoint = await is_sync_required_or_throw(account, state.conflict_new_endpoint)
                 state.changes_pending = required
                 if new_endpoint:
                     state.conflict_new_endpoint = new_endpoint
