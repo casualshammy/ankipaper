@@ -60,6 +60,7 @@ async def home(
             {"version": __version__},
         )
 
+    logger = _common_logger.getChild(account.username)
     manager = account.manager
     has_collection = manager.has_collection()
     decks: list = []
@@ -70,6 +71,8 @@ async def home(
             decks = await manager.run(list_deck_stats)
         except Exception as exc:
             error = f"Failed to read deck stats: {exc}"
+
+    is_sync_required = await _is_sync_required(logger, account)
 
     return templates.TemplateResponse(
         request,
@@ -87,7 +90,8 @@ async def home(
             "empty_ok": empty_ok,
             "empty_error": empty_error,
             "media_collection_too_large": account.sync_state.media_collection_too_large,
-            "media_max_collection_bytes": settings.media_max_collection_bytes
+            "media_max_collection_bytes": settings.media_max_collection_bytes,
+            "sync_required": is_sync_required,
         },
     )
 
@@ -437,6 +441,9 @@ async def _is_sync_required(
     logger: logging.Logger,
     account: Account,
 ) -> bool:
+    if account.sync_state.status == "running":
+        return False
+    
     try:
         result, _ = await is_sync_required_or_throw(account, account.sync_state.conflict_new_endpoint)
         return result

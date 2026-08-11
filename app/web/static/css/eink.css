@@ -443,3 +443,17 @@ img:not([src]) {
   text-align: right;
   margin: 0;
 }
+
+.sync-wait {
+  text-align: center;
+  margin-top: 24px;
+}
+.sync-wait .indicator {
+  font-size: 96px;
+  line-height: 1.2;
+  margin-bottom: 24px;
+}
+.sync-wait .actions {
+  margin-top: 24px;
+  justify-content: center;
+}

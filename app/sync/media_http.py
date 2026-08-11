@@ -40,6 +40,7 @@ from app.sync.media_protocol import (
     make_session_key,
     post_json,
 )
+from app.sync.state import SyncStatePhase
 
 # Re-export for callers that import ``SyncHttpError`` from this module.
 __all__ = ["sync_media_direct", "SyncHttpError"]
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 #: limit — see ``_anki_repo/rslib/src/sync/media/database/server/entry/changes.sql``).
 _MEDIA_CHANGES_BATCH = 1000
 
-ProgressCallback = Callable[[str, int, int, int], None]
+ProgressCallback = Callable[[SyncStatePhase, int, int, int], None]
 
 
 def sync_media_direct(
@@ -419,7 +420,7 @@ def _safe_stat_size(path: Path) -> int:
 
 def _emit_progress(
     callback: ProgressCallback | None,
-    phase: str,
+    phase: SyncStatePhase,
     current: int,
     total: int,
     downloaded: int,

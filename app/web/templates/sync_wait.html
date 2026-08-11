@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Sync — AnkiPaper{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block content %}
+  <div class="sync-wait">
+    {% if error %}
+      <p class="error">Sync error: {{ error }}</p>
+    {% elif phase == "collection" %}
+      <div class="indicator">&hellip;</div>
+      <p class="notice">Syncing decks&hellip;</p>
+      <p class="muted">This page updates automatically.</p>
+      <meta http-equiv="refresh" content="2">
+    {% elif phase in ("mediaChanges", "downloadFiles") %}
+      <div class="indicator">&hellip;</div>
+      <p class="notice">Syncing media ({{ percent }}%)&hellip;</p>
+      <p class="muted">This page updates automatically.</p>
+      <meta http-equiv="refresh" content="2">
+    {% elif phase is none %}
+      <div class="indicator">✔</div>
+      <p class="notice">Done. Loading decks&hellip;</p>
+      <meta http-equiv="refresh" content="1;url=/">
+    {% endif %}
+    <p class="actions"><a class="btn" href="/">Back to decks</a></p>
+  </div>
+{% endblock %}

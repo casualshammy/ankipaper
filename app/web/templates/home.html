@@ -11,7 +11,7 @@
 {% block nav %}
   <form method="post" action="/sync" class="nav-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-    <button type="submit" id="sync-btn" class="btn">Sync</button>
+    <button type="submit" class="btn">Sync{% if sync_required %} ●{% endif %}</button>
   </form>
   <form method="post" action="/logout" class="nav-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
@@ -95,48 +95,4 @@
   {% if show_privacy_policy %}
     <span>| <a href="/static/privacy_policy.html">Privacy Policy</a></span>
   {% endif %}
-{% endblock %}
-
-{% block scripts %}
-  <script>
-    (function () {
-      var btn = document.getElementById('sync-btn');
-
-      function hide() {
-        btn.disabled = false;
-        btn.textContent = "Sync";
-      }
-      function show(pct) {
-        btn.textContent = '\u27F3 ' + (pct || 0) + '%';
-        btn.disabled = true;
-      }
-      function markPending() {
-        btn.disabled = false;
-        btn.textContent = "Sync ●";
-      }
-
-      function poll() {
-        fetch('/sync/status.json', { credentials: 'same-origin' })
-          .then(function (r) { return r.json(); })
-          .then(function (s) {
-            if (s.status === 'running') {
-              show(s.percent || 0);
-              setTimeout(poll, 2000);
-            } else if (s.status === 'error') {
-              btn.textContent = '❌ Sync';
-              setTimeout(hide, 3000);
-            } else if (s.changes_pending === true) {
-              markPending();
-            } else if (s.status === 'done') {
-              show(100);
-              setTimeout(hide, 1500);
-            } else {
-              hide();
-            }
-          })
-          .catch(function () { /* swallow; no polling on error */ });
-      }
-      poll();
-    })();
-  </script>
 {% endblock %}

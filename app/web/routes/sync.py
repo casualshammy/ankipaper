@@ -9,135 +9,37 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app import __version__
 from app.config import Settings
 from app.storage.account import Account
 from app.sync.client import (
     AuthExpiredError,
-    FullSyncKind,
     SyncError,
     full_download,
     full_upload,
-    is_sync_required_or_throw,
     try_sync,
 )
 from app.sync.media_http import sync_media_direct
-from app.sync.state import SyncState
+from app.sync.state import SyncState, SyncStatePhase
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
 from app.web.ratelimit import check_sync_rate_limit
 
+_KNOWN_ERROR_CODES: frozenset[str] = frozenset({
+    "auth_expired",
+    "rate_limited",
+    "full_download_failed",
+    "full_upload_failed",
+    "media_failed",
+    "sync_failed",
+})
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _count_cards(col: Any) -> int:
-    """Returns the number of cards in the collection (0 means empty)."""
-
-    return int(col.card_count())
-
-
-async def _collection_is_empty(account: Account) -> bool:
-    """True if the local collection of the account contains no cards."""
-
-    manager = account.manager
-    if not manager.has_collection():
-        return True
-    try:
-        count = await manager.run(_count_cards)
-    except Exception:
-        logger.exception("Failed to count cards in collection")
-        return True
-    return count == 0
-
-
-async def _run_media_sync_background(
-    account: Account,
-    host_key: str,
-    endpoint: str | None,
-    data_dir: Path,
-    last_usn_path: Path,
-    settings: Settings,
-) -> None:
-    """Runs the media sync in the background, updating the account's SyncState."""
-
-    state: SyncState = account.sync_state
-    state.status = "running"
-    state.phase = "mediaChanges"
-    state.current = 0
-    state.total = 0
-    state.downloaded = 0
-    state.started_at = time.time()
-    state.finished_at = None
-    state.error = None
-
-    def _cb(phase: str, current: int, total: int, downloaded: int) -> None:
-        state.phase = phase
-        state.current = current
-        state.total = total
-        state.downloaded = downloaded
-
-    try:
-        result = await asyncio.to_thread(
-            sync_media_direct,
-            host_key=host_key,
-            endpoint=endpoint,
-            data_dir=data_dir,
-            last_usn_path=last_usn_path,
-            progress_callback=_cb,
-            max_file_bytes=settings.media_max_file_bytes,
-            max_collection_bytes=settings.media_max_collection_bytes,
-        )
-        # Persist the per-collection size-limit state for the UI banner.
-        # A successful sync that did not hit the limit clears the flag.
-        state.media_collection_too_large = bool(result.get("collection_too_large"))
-        state.status = "done"
-        state.phase = "done"
-        state.finished_at = time.time()
-        state.current = state.total = 100
-        logger.info(
-            "Media sync completed in %.1fs",
-            state.finished_at - state.started_at,
-        )
-    except Exception as exc:
-        logger.exception("Background media sync failed")
-        state.status = "error"
-        state.error = str(exc)
-        state.finished_at = time.time()
-
-
-def _start_media_sync_after_full(
-    account: Account,
-    host_key: str,
-    endpoint: str | None,
-    settings: Settings,
-) -> None:
-    """Schedules a background media sync after a successful full upload/download."""
-
-    asyncio.create_task(
-        _run_media_sync_background(
-            account=account,
-            host_key=host_key,
-            endpoint=endpoint,
-            data_dir=account.data_dir,
-            last_usn_path=account.last_usn_path(),
-            settings=settings,
-        )
-    )
-
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
-
 
 @router.post("/sync", response_model=None)
 async def sync_post(
@@ -145,7 +47,12 @@ async def sync_post(
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
 ) -> RedirectResponse:
-    """Starts synchronisation with AnkiWeb for the current account."""
+    """Starts synchronisation with AnkiWeb for the current account.
+
+    The actual work runs in a background task; this handler only validates
+    the request, schedules the task and redirects to ``/sync/wait`` which
+    renders the live progress.
+    """
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
@@ -158,111 +65,89 @@ async def sync_post(
     if not await check_sync_rate_limit(account.id):
         return RedirectResponse("/?sync_error=rate_limited", status_code=303)
 
-    # If a sync is already running — re-show the indicator.
+    # If a sync is already running, jump straight to the wait screen.
     if account.sync_state.status == "running":
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/sync/wait", status_code=303)
 
-    # If an unresolved full-sync conflict is pending, route the user back to the
-    # choice page instead of starting a new sync.
+    # Unresolved full-sync conflict: route the user to the right screen
+    # without starting a new sync.
     if account.sync_state.conflict_pending:
         if account.sync_state.is_one_sided_conflict:
             return RedirectResponse("/sync/full/confirm", status_code=303)
         return RedirectResponse("/sync/conflict", status_code=303)
 
-    # Invalidate the pre-sync probe — the user has just kicked off a
-    # sync, so any cached ``changes_pending`` value is now stale.
-    account.sync_state.changes_pending = None
+    account.sync_state.status = "running"
+    account.sync_state.phase = "collection"
 
-    manager = account.manager
-
-    try:
-        result = await manager.run(try_sync, host_key)
-    except Exception as exc:
-        logger.exception("Unhandled sync error")
-        return RedirectResponse(f"/?sync_error={exc}", status_code=303)
-
-    if result.auth_expired:
-        account.delete_host_key()
-        return RedirectResponse("/login?reason=auth_expired", status_code=303)
-
-    if result.error:
-        return RedirectResponse(f"/?sync_error={result.error}", status_code=303)
-
-    if result.full_sync_kind is not None:
-        account.sync_state.begin_conflict(
-            full_sync_kind=result.full_sync_kind,
-            new_endpoint=result.new_endpoint,
-            server_message=result.server_message,
-        )
-        if result.full_sync_kind is FullSyncKind.CONFLICT:
-            return RedirectResponse("/sync/conflict", status_code=303)
-        # One-sided case (FULL_DOWNLOAD / FULL_UPLOAD): skip the choice page.
-        return RedirectResponse("/sync/full/confirm", status_code=303)
-
-    is_empty = await _collection_is_empty(account)
-    if is_empty:
-        logger.info("Local collection is empty after sync, falling back to full download")
-        try:
-            full = await manager.run(full_download, host_key, result.new_endpoint)
-        except AuthExpiredError:
-            account.delete_host_key()
-            return RedirectResponse("/login?reason=auth_expired", status_code=303)
-        except SyncError as exc:
-            return RedirectResponse(f"/?sync_error={exc}", status_code=303)
-        except Exception:
-            logger.exception("Full download failed")
-            return RedirectResponse("/?sync_error=full_download_failed", status_code=303)
-
-        if full.error:
-            return RedirectResponse(f"/?sync_error={full.error}", status_code=303)
-
-    # Media sync in the background (it can take minutes). Pages poll
-    # ``/sync/status.json`` and show the indicator in the top bar.
-    _start_media_sync_after_full(
-        account,
-        host_key,
-        result.new_endpoint,
-        settings,
-    )
-
-    # Return to the home page; the indicator will show progress.
-    return RedirectResponse("/", status_code=303)
+    _start_collection_sync_background(account, host_key, settings)
+    return RedirectResponse("/sync/wait", status_code=303)
 
 
-@router.get("/sync/status.json")
-async def sync_status_json(
+@router.get("/sync/wait", response_model=None)
+async def sync_wait_get(
+    request: Request,
     account: Account | None = Depends(get_current_account_optional),
-) -> JSONResponse:
-    """Lightweight JSON endpoint polled by the top-bar indicator (every 2s).
+) -> HTMLResponse | RedirectResponse:
+    """Renders the current sync state with a meta-refresh self-poll.
 
-    Each call also probes AnkiWeb for pending changes (single HTTP
-    round-trip, no data transfer) and surfaces the result as
-    ``changes_pending``. The probe is skipped while a sync is in flight
-    and capped at a 3-second timeout so a slow AnkiWeb cannot stall the
-    poll.
+    Routes to ``/``, ``/login`` or the full-sync conflict pages depending
+    on the terminal/branch state of ``account.sync_state``.
     """
 
     if account is None:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return RedirectResponse("/login", status_code=303)
 
     state = account.sync_state
-    if state.status != "running":
-        host_key = account.host_key()
-        if host_key:
-            try:
-                required, new_endpoint = await is_sync_required_or_throw(account, state.conflict_new_endpoint)
-                state.changes_pending = required
-                if new_endpoint:
-                    state.conflict_new_endpoint = new_endpoint
-            except TimeoutError:
-                logger.debug("sync_status probe timed out for %s", account.id)
-            except Exception:
-                logger.exception("sync_status probe failed for %s", account.id)
 
-    return JSONResponse(state.to_dict())
+    # Conflict pending → the user must make a choice; no auto-refresh.
+    if state.conflict_pending:
+        if state.is_one_sided_conflict:
+            return RedirectResponse("/sync/full/confirm", status_code=303)
+        return RedirectResponse("/sync/conflict", status_code=303)
 
+    if state.status == "error":
+        if state.error == "auth_expired":
+            return RedirectResponse("/login?reason=auth_expired", status_code=303)
+        templates: Jinja2Templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request,
+            "sync_wait.html",
+            {
+                "version": __version__,
+                "phase": "",
+                "percent": 0,
+                "error": state.error,
+            },
+        )
 
-# --- Full-sync conflict resolution ---------------------------------------
+    if state.status == "done":
+        # Brief "Done" screen, then bounce to home.
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request,
+            "sync_wait.html",
+            {
+                "version": __version__,
+                "phase": None,
+                "percent": 100,
+                "error": None,
+            },
+        )
+
+    if state.status == "idle":
+        return RedirectResponse("/", status_code=303)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "sync_wait.html",
+        {
+            "version": __version__,
+            "phase": state.phase or "collection",
+            "percent": state.percent,
+            "error": None,
+        },
+    )
 
 
 @router.get("/sync/conflict", response_class=HTMLResponse)
@@ -349,7 +234,11 @@ async def sync_full_post(
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
 ) -> RedirectResponse:
-    """Executes the previously-confirmed full upload or download."""
+    """Executes the previously-confirmed full upload or download.
+
+    The actual transfer runs in a background task; this handler only
+    validates the request, schedules it and redirects to ``/sync/wait``.
+    """
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
@@ -364,30 +253,305 @@ async def sync_full_post(
         account.delete_host_key()
         return RedirectResponse("/login?reason=auth_expired", status_code=303)
 
+    # Capture and clear conflict state up-front so /sync/conflict doesn't
+    # re-use a consumed decision. The background task doesn't touch conflict
+    # state (it's not a sync, it's a full transfer).
     endpoint = state.conflict_new_endpoint
+    state.reset_conflict()
+    state.status = "running"
+    state.phase = "collection"
     is_upload = direction == "upload"
 
-    # Capture and clear conflict state up-front so a later navigation to
-    # /sync/conflict doesn't try to re-use the now-consumed decision.
-    state.reset_conflict()
+    asyncio.create_task(
+        _run_full_sync_background(
+            account=account,
+            host_key=host_key,
+            endpoint=endpoint,
+            is_upload=is_upload,
+            settings=settings,
+        )
+    )
+    return RedirectResponse("/sync/wait", status_code=303)
+
+
+async def _run_full_sync_background(
+    account: Account,
+    host_key: str,
+    endpoint: str | None,
+    is_upload: bool,
+    settings: Settings,
+) -> None:
+    """Runs a confirmed full upload/download, then chains into media sync."""
+
+    state = account.sync_state
+    state.status = "running"
+    state.phase = "collection"
+    state.current = 0
+    state.total = 0
+    state.downloaded = 0
+    state.started_at = time.time()
+    state.finished_at = None
+    state.error = None
 
     manager = account.manager
     try:
         if is_upload:
-            result = await manager.run(full_upload, host_key, endpoint)
+            await manager.run(full_upload, host_key, endpoint)
         else:
-            result = await manager.run(full_download, host_key, endpoint)
+            await manager.run(full_download, host_key, endpoint)
     except AuthExpiredError:
-        account.delete_host_key()
-        return RedirectResponse("/login?reason=auth_expired", status_code=303)
+        _fail_sync(state, error="auth_expired", account=account)
+        return
     except SyncError as exc:
-        return RedirectResponse(f"/?sync_error={exc}", status_code=303)
+        _fail_sync(state, error=str(exc), account=account)
+        return
     except Exception:
-        logger.exception("Full %s failed", direction)
-        return RedirectResponse(f"/?sync_error=full_{direction}_failed", status_code=303)
+        logger.exception("Full %s failed", "upload" if is_upload else "download")
+        _fail_sync(state, error=f"full_{'upload' if is_upload else 'download'}_failed", account=account)
+        return
+
+    _start_media_sync_background(
+        account=account,
+        host_key=host_key,
+        endpoint=endpoint,
+        settings=settings,
+    )
+
+
+def _count_cards(col: Any) -> int:
+    """Returns the number of cards in the collection (0 means empty)."""
+
+    return int(col.card_count())
+
+
+async def _collection_is_empty(account: Account) -> bool:
+    """True if the local collection of the account contains no cards."""
+
+    manager = account.manager
+    if not manager.has_collection():
+        return True
+    try:
+        count = await manager.run(_count_cards)
+    except Exception:
+        logger.exception("Failed to count cards in collection")
+        return True
+    return count == 0
+
+
+def _safe_error_code(error: str) -> str:
+    """Reduce an arbitrary error string to a known user-safe code."""
+
+    raw = (error or "").strip().splitlines()[0] if error else ""
+    if raw in _KNOWN_ERROR_CODES:
+        return raw
+    lowered = raw.lower()
+    if "rate" in lowered and "limit" in lowered:
+        return "rate_limited"
+    if "media" in lowered:
+        return "media_failed"
+    if "full" in lowered and "download" in lowered:
+        return "full_download_failed"
+    if "full" in lowered and "upload" in lowered:
+        return "full_upload_failed"
+    return "sync_failed"
+
+
+def _fail_sync(
+    state: SyncState,
+    *,
+    error: str,
+    account: Account,
+) -> None:
+    """Records a terminal sync error on ``state`` and finishes the run.
+
+    For ``error == "auth_expired"`` the stored hostKey is deleted.
+    """
+
+    state.status = "error"
+    state.phase = None
+    state.error = _safe_error_code(error)
+    state.finished_at = time.time()
+    if state.error == "auth_expired":
+        account.delete_host_key()
+
+
+async def _run_collection_sync_background(
+    account: Account,
+    host_key: str,
+    settings: Settings,
+) -> None:
+    """Runs the collection sync (incremental, or full download on empty).
+
+    Sets ``account.sync_state`` to ``running``/``collection`` while it runs
+    so ``/sync/wait`` can render progress. On success it hands off to the
+    media sync background task. On a full-sync conflict it pauses and
+    sets ``conflict_pending`` for ``/sync/wait`` to redirect.
+    """
+
+    state: SyncState = account.sync_state
+    state.status = "running"
+    state.phase = "collection"
+    state.current = 0
+    state.total = 0
+    state.downloaded = 0
+    state.started_at = time.time()
+    state.finished_at = None
+    state.error = None
+
+    manager = account.manager
+
+    try:
+        result = await manager.run(try_sync, host_key)
+    except Exception as exc:
+        logger.exception("Background collection sync raised")
+        _fail_sync(state, error=str(exc), account=account)
+        return
+
+    if result.auth_expired:
+        _fail_sync(state, error="auth_expired", account=account)
+        return
 
     if result.error:
-        return RedirectResponse(f"/?sync_error={result.error}", status_code=303)
+        _fail_sync(state, error=result.error, account=account)
+        return
 
-    _start_media_sync_after_full(account, host_key, endpoint, settings)
-    return RedirectResponse("/", status_code=303)
+    if result.full_sync_kind is not None:
+        state.begin_conflict(
+            full_sync_kind=result.full_sync_kind,
+            new_endpoint=result.new_endpoint,
+            server_message=result.server_message,
+        )
+        # No background activity while waiting for the user to resolve.
+        state.status = "idle"
+        state.phase = None
+        state.finished_at = time.time()
+        return
+
+    is_empty = await _collection_is_empty(account)
+    if is_empty:
+        logger.info("Local collection empty, falling back to full download")
+        try:
+            full = await manager.run(full_download, host_key, result.new_endpoint)
+        except AuthExpiredError:
+            _fail_sync(state, error="auth_expired", account=account)
+            return
+        except SyncError as exc:
+            _fail_sync(state, error=str(exc), account=account)
+            return
+        except Exception:
+            logger.exception("Full download failed")
+            _fail_sync(state, error="full_download_failed", account=account)
+            return
+        if full.error:
+            _fail_sync(state, error=full.error, account=account)
+            return
+
+    # Collection done. Hand off to media sync.
+    _start_media_sync_background(
+        account=account,
+        host_key=host_key,
+        endpoint=result.new_endpoint,
+        settings=settings,
+    )
+
+
+def _start_media_sync_background(
+    account: Account,
+    host_key: str,
+    endpoint: str | None,
+    settings: Settings,
+) -> None:
+    """Schedules a background media sync (preserves ``started_at``)."""
+
+    state = account.sync_state
+    # Reset only media-specific fields; keep ``started_at`` from collection phase.
+    state.status = "running"
+    state.phase = "mediaChanges"
+    state.current = 0
+    state.total = 0
+    state.downloaded = 0
+    state.finished_at = None
+    state.error = None
+
+    asyncio.create_task(
+        _run_media_sync_background(
+            account=account,
+            host_key=host_key,
+            endpoint=endpoint,
+            data_dir=account.data_dir,
+            last_usn_path=account.last_usn_path(),
+            settings=settings,
+        )
+    )
+
+
+async def _run_media_sync_background(
+    account: Account,
+    host_key: str,
+    endpoint: str | None,
+    data_dir: Path,
+    last_usn_path: Path,
+    settings: Settings,
+) -> None:
+    """Runs the media sync, updating ``account.sync_state`` for the UI."""
+
+    state: SyncState = account.sync_state
+    state.status = "running"
+    state.phase = "mediaChanges"
+    state.current = 0
+    state.total = 0
+    state.downloaded = 0
+    if not state.started_at:
+        state.started_at = time.time()
+    state.finished_at = None
+    state.error = None
+
+    def _cb(
+        phase: SyncStatePhase, 
+        current: int, 
+        total: int, 
+        downloaded: int) -> None:
+        state.phase = phase
+        state.current = current
+        state.total = total
+        state.downloaded = downloaded
+
+    try:
+        result = await asyncio.to_thread(
+            sync_media_direct,
+            host_key=host_key,
+            endpoint=endpoint,
+            data_dir=data_dir,
+            last_usn_path=last_usn_path,
+            progress_callback=_cb,
+            max_file_bytes=settings.media_max_file_bytes,
+            max_collection_bytes=settings.media_max_collection_bytes,
+        )
+        state.media_collection_too_large = bool(result.get("collection_too_large"))
+        state.status = "done"
+        state.phase = None
+        state.finished_at = time.time()
+        state.current = state.total = 100
+        logger.info(
+            "Media sync completed in %.1fs",
+            state.finished_at - state.started_at,
+        )
+    except Exception as exc:
+        logger.exception("Background media sync failed")
+        _fail_sync(state, error=str(exc), account=account)
+
+
+def _start_collection_sync_background(
+    account: Account,
+    host_key: str,
+    settings: Settings,
+) -> None:
+    """Schedules a background collection sync."""
+
+    asyncio.create_task(
+        _run_collection_sync_background(
+            account=account,
+            host_key=host_key,
+            settings=settings,
+        )
+    )

@@ -6,12 +6,13 @@ can hold a per-account instance without circular imports with the routes.
 
 from __future__ import annotations
 
-import time
-from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from app.sync.client import FullSyncKind
+
+SyncStatePhase = Literal["collection", "mediaChanges", "downloadFiles"]
 
 
 @dataclass(slots=True)
@@ -28,8 +29,8 @@ class SyncState:
     chosen one (``/sync/full/confirm``).
     """
 
-    status: str = "idle"  # "idle" | "running" | "done" | "error"
-    phase: str = ""  # "mediaChanges" | "downloadFiles" | ""
+    status: Literal["idle", "running", "done", "error"] = "idle"
+    phase: SyncStatePhase | None = None
     current: int = 0
     total: int = 0
     downloaded: int = 0
@@ -49,11 +50,6 @@ class SyncState:
     # media stopped downloading. Cleared automatically when a subsequent
     # sync finishes without hitting the limit.
     media_collection_too_large: bool = False
-
-    # Result of the last ``col.sync_status()`` probe. ``None`` means
-    # "never checked" or "the probe failed"; the indicator on the Sync
-    # button only fires for an explicit ``True``.
-    changes_pending: bool | None = None
 
     # -- Conflict (full-sync) lifecycle --------------------------------
 
@@ -93,14 +89,6 @@ class SyncState:
     # -- Derived properties ---------------------------------------------
 
     @property
-    def elapsed(self) -> float:
-        """Seconds since ``started_at`` (or 0 if the sync never started)."""
-
-        if not self.started_at:
-            return 0.0
-        return (self.finished_at or time.time()) - self.started_at
-
-    @property
     def percent(self) -> int:
         """Progress in 0..100, clamped."""
 
@@ -117,13 +105,3 @@ class SyncState:
         """
 
         return bool(self.conflict_direction)
-
-    # -- JSON serialisation ---------------------------------------------
-
-    def to_dict(self) -> dict[str, Any]:
-        """Returns a dict ready for JSON serialisation."""
-
-        d = asdict(self)
-        d["elapsed"] = self.elapsed
-        d["percent"] = self.percent
-        return d
