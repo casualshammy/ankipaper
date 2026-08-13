@@ -64,10 +64,31 @@ def _max_age_seconds() -> int:
     return get_settings().cookie_max_age_days * 86400
 
 
-def _secure_cookie() -> bool:
-    """Returns True if the cookie should be set with the Secure flag."""
+def _secure_cookie(request: Request) -> bool:
+    """Returns True if the cookie should be set with the Secure flag.
 
-    return get_settings().behind_proxy
+    Secure is suppressed when no trusted upstream HTTPS proxy is
+    configured, or when the request's Host header matches one of the
+    patterns in :attr:`Settings.cookie_insecure_hosts` (used to allow
+    LAN access over plain HTTP from the same process that serves
+    Cloudflare-fronted users).
+    """
+
+    if not get_settings().behind_proxy:
+        return False
+
+    host = (request.headers.get("host") or "").split(":", 1)[0].lower()
+    if not host:
+        return True
+
+    for pat in get_settings().cookie_insecure_hosts:
+        pat = pat.lower()
+        if pat.startswith("*."):
+            if host.endswith(pat[1:]):
+                return False
+        elif host == pat:
+            return False
+    return True
 
 
 def read_session(request: Request) -> Session:
@@ -96,17 +117,8 @@ def read_session(request: Request) -> Session:
     return Session(is_authenticated=True, account_id=user)
 
 
-def write_session(response: Response, account_id: str) -> None:
-    """Sets an authenticated session cookie for the given account.
-
-    Uses :func:`app.storage.secrets._load_or_create_fernet_key` so the
-    secret file is created on first login rather than failing with a
-    missing-key error.
-
-    Args:
-        response: Response object on which to set the cookie.
-        account_id: account identifier (``Account.id``).
-    """
+def write_session(response: Response, account_id: str, request: Request) -> None:
+    """Sets an authenticated session cookie for the given account."""
 
     s = URLSafeSerializer(_load_or_create_fernet_key(), salt=COOKIE_SALT)
     token = s.dumps({COOKIE_KEY: account_id})
@@ -116,18 +128,18 @@ def write_session(response: Response, account_id: str) -> None:
         max_age=_max_age_seconds(),
         httponly=True,
         samesite="lax",
-        secure=_secure_cookie(),
+        secure=_secure_cookie(request),
         path="/",
     )
 
 
-def clear_session(response: Response) -> None:
+def clear_session(response: Response, request: Request) -> None:
     """Deletes the session cookie."""
 
     response.delete_cookie(
         key=COOKIE_NAME,
         path="/",
-        secure=_secure_cookie(),
+        secure=_secure_cookie(request),
         httponly=True,
         samesite="lax",
     )

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import warnings
 from functools import lru_cache
+from typing import Annotated, Any
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -26,7 +29,29 @@ class Settings(BaseSettings):
 
     behind_proxy: bool = Field(
         default=False,
-        description="True if the application runs behind a reverse proxy.",
+        validation_alias=AliasChoices(
+            "ankipaper_trusted_upstream_https_proxy",
+            "ankipaper_behind_proxy",
+        ),
+        description=(
+            "True if the application runs behind a trusted upstream proxy "
+            "that terminates TLS. Enables Secure cookies, X-Forwarded-For IP trust, "
+            "and proxy-aware canonical URLs. Prefers env var "
+            "ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY; "
+            "ANKIPAPER_BEHIND_PROXY is the legacy name and is deprecated."
+        ),
+    )
+
+    cookie_insecure_hosts: Annotated[list[str], NoDecode] = Field(
+        default=[],
+        description=(
+            "Comma-separated list of Host header values (exact match or "
+            "'*.suffix' wildcard) for which the session cookie should be "
+            "set without the Secure flag. Required to allow LAN access over "
+            "plain HTTP when ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY=true "
+            "and the same process serves both Cloudflare-fronted and direct "
+            "LAN access. Example: 'ankipaper.lan,192.168.1.10'."
+        ),
     )
 
     show_privacy_policy: bool = Field(
@@ -125,6 +150,32 @@ class Settings(BaseSettings):
             "the landing page."
         ),
     )
+
+    @field_validator("cookie_insecure_hosts", mode="before")
+    @classmethod
+    def _parse_cookie_insecure_hosts(cls, value: Any) -> Any:
+        """Splits a comma-separated string into a list of host patterns."""
+
+        if not isinstance(value, str):
+            return value
+        return [part.strip() for part in value.split(",") if part.strip()]
+
+    @model_validator(mode="after")
+    def _warn_deprecated_behind_proxy(self) -> Settings:
+        """Warns when only the legacy ANKIPAPER_BEHIND_PROXY env var is set."""
+
+        if (
+            "ANKIPAPER_BEHIND_PROXY" in os.environ
+            and "ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY" not in os.environ
+        ):
+            warnings.warn(
+                "ANKIPAPER_BEHIND_PROXY is deprecated; "
+                "use ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return self
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

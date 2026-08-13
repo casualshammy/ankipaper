@@ -82,7 +82,8 @@ Settings are read from environment variables or `.env` using the `ANKIPAPER_` pr
 | Variable | Default | Purpose |
 |---|---:|---|
 | `ANKIPAPER_COOKIE_MAX_AGE_DAYS` | `30` | Signed session lifetime in days. |
-| `ANKIPAPER_BEHIND_PROXY` | `false` | Set to `true` behind nginx, cloudflared, or another trusted reverse proxy. Enables `Secure` cookies and proxy-aware client IP detection. |
+| `ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY` | `false` | Set to `true` behind a TLS-terminating reverse proxy (nginx, cloudflared, etc.). Enables `Secure` cookies, X-Forwarded-For IP trust, and proxy-aware canonical URLs. The legacy name `ANKIPAPER_BEHIND_PROXY` still works but is deprecated. |
+| `ANKIPAPER_COOKIE_INSECURE_HOSTS` | `""` | Comma-separated list of `Host` header values (exact match or `*.suffix` wildcard) for which the session cookie is set without `Secure`. Use this when the same process serves both Cloudflare-fronted HTTPS and a direct LAN access over plain HTTP. |
 | `ANKIPAPER_SHOW_PRIVACY_POLICY` | `false` | Adds a link to `/static/privacy_policy.html` in login and deck-list footers. |
 | `ANKIPAPER_DEBUG_HEADERS` | `false` | Logs all incoming request headers for proxy debugging. Keep disabled in production because cookies and authorization headers may be logged. |
 | `ANKIPAPER_REDIS_URL` | `redis://localhost:6379/0` | Redis URL for login and sync rate limiting. In Docker Compose use `redis://redis:6379/0`. |
@@ -102,5 +103,12 @@ The Compose service binds port `8000` to loopback only. Put nginx, Cloudflare Tu
 
 For a reverse-proxy deployment:
 
-1. Set `ANKIPAPER_BEHIND_PROXY=true`.
+1. Set `ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY=true`.
 2. Make sure `X-Forwarded-Proto` header contains the real client IP. The application also understands Cloudflare's `CF-Connecting-IP` header when proxy mode is enabled.
+
+If the same instance is also reachable over plain HTTP from the LAN (for example when Cloudflare is blocked in your region), list the LAN hostnames in `ANKIPAPER_COOKIE_INSECURE_HOSTS` so the session cookie is set without the `Secure` flag for those hosts:
+
+```
+ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY=true
+ANKIPAPER_COOKIE_INSECURE_HOSTS=ankipaper.lan,192.168.1.10
+```

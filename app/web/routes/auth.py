@@ -137,12 +137,15 @@ async def login_post(
     )
 
     response = RedirectResponse("/", status_code=303)
-    write_session(response, account.id)
+    write_session(response, account.id, request)
     return response
 
 
 @router.post("/logout", response_model=None)
-async def logout_post(_: None = Depends(require_csrf)) -> RedirectResponse:
+async def logout_post(
+    request: Request,
+    _: None = Depends(require_csrf),
+) -> RedirectResponse:
     """Deletes the cookie and redirects to /login.
 
     The hostKey and collection files are not removed — the user can sign
@@ -151,5 +154,5 @@ async def logout_post(_: None = Depends(require_csrf)) -> RedirectResponse:
     """
 
     response = RedirectResponse("/login", status_code=303)
-    clear_session(response)
+    clear_session(response, request)
     return response
