@@ -16,6 +16,9 @@
     {% elif phase in ("mediaChanges", "downloadFiles") %}
       <div class="indicator">&hellip;</div>
       <p class="notice">Syncing media ({{ percent }}%)&hellip;</p>
+      {% if skipped_existing %}
+        <p class="muted">Skipped (already present): {{ skipped_existing }}</p>
+      {% endif %}
       <p class="muted">This page updates automatically.</p>
       <meta http-equiv="refresh" content="2">
     {% elif phase is none %}

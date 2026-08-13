@@ -34,6 +34,7 @@ class SyncState:
     current: int = 0
     total: int = 0
     downloaded: int = 0
+    skipped_existing: int = 0
     started_at: float = 0.0
     finished_at: float | None = None
     error: str | None = None

@@ -14,6 +14,7 @@ that side of the wire.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import zipfile
@@ -83,6 +84,36 @@ def is_supported(fname: str) -> bool:
     """
 
     return Path(fname).suffix.lower() in SUPPORTED_EXTENSIONS
+
+
+def expected_sha1(path: Path) -> str | None:
+    """Returns sha1 of ``path`` contents, or None on miss / error.
+
+    Returns None if the file is missing, not a regular file, or unreadable.
+    """
+
+    try:
+        file_stat = path.stat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        logger.warning("Failed to stat media file before hashing: %r", path)
+        return None
+    if not S_ISREG(file_stat.st_mode):
+        return None
+
+    hasher = hashlib.sha1()
+    try:
+        with path.open("rb") as f:
+            while True:
+                chunk = f.read(_CHUNK_SIZE)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+    except OSError:
+        logger.warning("Failed to read media file while hashing: %r", path)
+        return None
+    return hasher.hexdigest()
 
 
 def safe_media_path(real_name: str, target_dir: Path) -> Path | None:

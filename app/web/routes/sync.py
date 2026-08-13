@@ -116,6 +116,7 @@ async def sync_wait_get(
                 "version": __version__,
                 "phase": "",
                 "percent": 0,
+                "skipped_existing": state.skipped_existing,
                 "error": state.error,
             },
         )
@@ -130,6 +131,7 @@ async def sync_wait_get(
                 "version": __version__,
                 "phase": None,
                 "percent": 100,
+                "skipped_existing": state.skipped_existing,
                 "error": None,
             },
         )
@@ -145,6 +147,7 @@ async def sync_wait_get(
             "version": __version__,
             "phase": state.phase or "collection",
             "percent": state.percent,
+            "skipped_existing": state.skipped_existing,
             "error": None,
         },
     )
@@ -501,20 +504,23 @@ async def _run_media_sync_background(
     state.current = 0
     state.total = 0
     state.downloaded = 0
+    state.skipped_existing = 0
     if not state.started_at:
         state.started_at = time.time()
     state.finished_at = None
     state.error = None
 
     def _cb(
-        phase: SyncStatePhase, 
-        current: int, 
-        total: int, 
-        downloaded: int) -> None:
+        phase: SyncStatePhase,
+        current: int,
+        total: int,
+        downloaded: int,
+        skipped_existing: int) -> None:
         state.phase = phase
         state.current = current
         state.total = total
         state.downloaded = downloaded
+        state.skipped_existing = skipped_existing
 
     try:
         result = await asyncio.to_thread(
@@ -527,7 +533,7 @@ async def _run_media_sync_background(
             max_file_bytes=settings.media_max_file_bytes,
             max_collection_bytes=settings.media_max_collection_bytes,
         )
-        state.media_collection_too_large = bool(result.get("collection_too_large"))
+        state.media_collection_too_large = result.collection_too_large
         state.status = "done"
         state.phase = None
         state.finished_at = time.time()

@@ -17,14 +17,15 @@ This module is the orchestrator — it ties together the wire protocol
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from typing import NamedTuple
 
 from app.sync.endpoints import normalize_endpoint
 from app.sync.media_files import (
+    expected_sha1,
     extract_zip,
     is_supported,
     media_dir,
@@ -43,7 +44,7 @@ from app.sync.media_protocol import (
 from app.sync.state import SyncStatePhase
 
 # Re-export for callers that import ``SyncHttpError`` from this module.
-__all__ = ["sync_media_direct", "SyncHttpError"]
+__all__ = ["sync_media_direct", "SyncHttpError", "PendingMediaFile", "MediaSyncResult"]
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,54 @@ logger = logging.getLogger(__name__)
 #: limit — see ``_anki_repo/rslib/src/sync/media/database/server/entry/changes.sql``).
 _MEDIA_CHANGES_BATCH = 1000
 
-ProgressCallback = Callable[[SyncStatePhase, int, int, int], None]
+
+class PendingMediaFile(NamedTuple):
+    """One media file queued for download by media-sync."""
+
+    fname: str
+    sha1: str
+
+
+class MediaSyncResult(NamedTuple):
+    """Outcome of a single :func:`sync_media_direct` run."""
+
+    collection_too_large: bool
+
+
+class ChangesSummary(NamedTuple):
+    """Output of :func:`_collect_changes`."""
+
+    all_files: list[PendingMediaFile]
+    to_delete: list[str]
+    skipped_unsupported: int
+
+
+class DownloadSummary(NamedTuple):
+    """Output of :func:`_download_all`."""
+
+    downloaded: list[str]
+    bytes_written: int
+    skipped_oversize: int
+    skipped_existing: int
+    collection_too_large: bool
+
+
+class DeletionSummary(NamedTuple):
+    """Output of :func:`_apply_deletions`."""
+
+    deleted: int
+    bytes_freed: int
+    delete_errors: int
+
+
+class FilteredBatch(NamedTuple):
+    """Output of :func:`_filter_batch_by_local_hash`."""
+
+    to_download: list[PendingMediaFile]
+    skipped_existing: int
+
+
+ProgressCallback = Callable[[SyncStatePhase, int, int, int, int], None]
 
 
 def sync_media_direct(
@@ -65,7 +113,7 @@ def sync_media_direct(
     progress_callback: ProgressCallback | None = None,
     max_file_bytes: int | None = None,
     max_collection_bytes: int | None = None,
-) -> dict:
+) -> MediaSyncResult:
     """Downloads media files from AnkiWeb into ``data_dir/collection.media``.
 
     Args:
@@ -82,23 +130,13 @@ def sync_media_direct(
             ``.webp``) and fonts (``.otf``, ``.ttf``, ``.woff``,
             ``.woff2``). Audio, video, JS, etc. are skipped.
         progress_callback: optional callback ``(phase, current, total,
-            downloaded) -> None``. ``phase`` is ``"mediaChanges"`` or
-            ``"downloadFiles"``; ``current``/``total`` is the progress in
-            the current phase; ``downloaded`` is how many files have
-            already been downloaded. Used for the progress bar in the UI.
+            downloaded, skipped_existing) -> None``.
         max_file_bytes: if not None, individual files larger than this
             are skipped (with a warning) and not written to disk.
         max_collection_bytes: if not None, the total on-disk size of
             ``collection.media/`` is bounded by this value. When the
             existing directory is already at or above the limit, no new
-            files are written and ``collection_too_large`` in the
-            returned dict is set to True.
-
-    Returns:
-        Dict with the result: ``{"downloaded": N, "total": N,
-        "skipped": N, "skipped_oversize": N, "deleted": N,
-        "delete_errors": N, "bytes_freed": N, "last_usn": N,
-        "endpoint": "...", "collection_too_large": bool}``.
+            files are written.
     """
 
     base = normalize_endpoint(endpoint)
@@ -113,21 +151,21 @@ def sync_media_direct(
     logger.info("Media sync: server_usn=%s", server_usn)
 
     last_usn = _read_last_usn(last_usn_path)
-    all_files, to_delete, skipped_unsupported = _collect_changes(
+    changes = _collect_changes(
         base, host_key, session_key, last_usn, server_usn,
         image_only, progress_callback,
     )
-    _emit_progress(progress_callback, "mediaChanges", server_usn, server_usn, 0)
+    _emit_progress(progress_callback, "mediaChanges", server_usn, server_usn, 0, 0)
 
-    downloaded, bytes_written, skipped_oversize, collection_too_large = _download_all(
-        base, host_key, session_key, all_files, media,
+    downloads = _download_all(
+        base, host_key, session_key, changes.all_files, media,
         batch_limit=batch_limit,
         max_file_bytes=max_file_bytes,
         max_collection_bytes=max_collection_bytes,
         progress_callback=progress_callback,
     )
 
-    deleted, deleted_bytes, delete_errors = _apply_deletions(to_delete, media)
+    deletions = _apply_deletions(changes.to_delete, media)
 
     # Persist ``last_usn`` even when the collection hit the size limit —
     # server-side state has already advanced past these files, and we
@@ -137,25 +175,15 @@ def sync_media_direct(
 
     logger.info(
         "Media sync complete: %d files downloaded, %d deleted, %d unsupported "
-        "skipped, %d oversize skipped, %d bytes written, "
+        "skipped, %d oversize skipped, %d already-present skipped, %d bytes written, "
         "collection_too_large=%s, last_usn=%s",
-        len(downloaded), deleted, skipped_unsupported, skipped_oversize,
-        bytes_written, collection_too_large, server_usn,
+        len(downloads.downloaded), deletions.deleted,
+        changes.skipped_unsupported, downloads.skipped_oversize,
+        downloads.skipped_existing, downloads.bytes_written,
+        downloads.collection_too_large, server_usn,
     )
 
-    return {
-        "downloaded": len(downloaded),
-        "total": len(all_files),
-        "skipped": skipped_unsupported,
-        "skipped_oversize": skipped_oversize,
-        "deleted": deleted,
-        "delete_errors": delete_errors,
-        "bytes_freed": deleted_bytes,
-        "bytes_written": bytes_written,
-        "collection_too_large": collection_too_large,
-        "last_usn": server_usn,
-        "endpoint": base,
-    }
+    return MediaSyncResult(collection_too_large=downloads.collection_too_large)
 
 
 # ---------------------------------------------------------------------------
@@ -192,21 +220,14 @@ def _collect_changes(
     server_usn: int,
     image_only: bool,
     progress_callback: ProgressCallback | None,
-) -> tuple[list[tuple[str, str]], list[str], int]:
+) -> ChangesSummary:
     """Paginates ``/msync/mediaChanges`` and partitions entries by action.
 
     Args:
         server_usn: server-side ceiling for the progress bar's ``total``.
-
-    Returns:
-        ``(all_files, to_delete, skipped_unsupported)`` where ``all_files``
-        is the list of ``(fname, sha1)`` pairs to download,
-        ``to_delete`` is the list of filenames deleted on AnkiWeb, and
-        ``skipped_unsupported`` counts entries filtered out by the
-        extension whitelist.
     """
 
-    all_files: list[tuple[str, str]] = []
+    all_files: list[PendingMediaFile] = []
     to_delete: list[str] = []
     skipped_unsupported = 0
 
@@ -221,11 +242,16 @@ def _collect_changes(
             break
 
         for entry in changes:
-            fname, skipped_unsupported, to_delete = _classify_change(
-                entry, image_only, skipped_unsupported, to_delete,
-            )
-            if fname is not None:
-                all_files.append(fname)
+            if not isinstance(entry, list) or len(entry) < 3:
+                logger.warning("Skipping malformed media change entry: %r", entry)
+                continue
+            fname, _, sha1 = entry
+            if not sha1:
+                to_delete.append(fname)
+            elif image_only and not is_supported(fname):
+                skipped_unsupported += 1
+            else:
+                all_files.append(PendingMediaFile(fname, sha1))
 
         last_usn = int(changes[-1][1])
         logger.info(
@@ -234,63 +260,39 @@ def _collect_changes(
         )
         _emit_progress(
             progress_callback, "mediaChanges",
-            int(last_usn), max(int(last_usn), int(server_usn)), 0,
+            last_usn, max(last_usn, server_usn), 0, 0,
         )
         if len(changes) < _MEDIA_CHANGES_BATCH:
             # Less than the limit — this was the last batch.
             break
 
-    return all_files, to_delete, skipped_unsupported
-
-
-def _classify_change(
-    entry: list,
-    image_only: bool,
-    skipped_unsupported: int,
-    to_delete: list[str],
-) -> tuple[tuple[str, str] | None, int, list[str]]:
-    """Classifies one ``mediaChanges`` row.
-
-    Returns ``(file_pair_or_none, skipped_unsupported, to_delete)`` so the
-    caller can fold counters back into the running totals. AnkiWeb
-    serialises ``MediaChange`` as ``[fname, usn, sha1]`` (tuple, not
-    object — see ``_anki_repo/rslib/src/sync/media/protocol.rs``).
-    """
-
-    if not isinstance(entry, list) or len(entry) < 3:
-        logger.warning("Skipping malformed media change entry: %r", entry)
-        return None, skipped_unsupported, to_delete
-
-    fname, _usn, sha1 = entry[0], entry[1], entry[2]
-    if not sha1:
-        # Empty sha1 means "deleted on AnkiWeb" — defer the local unlink
-        # until after downloads so a download failure does not strand
-        # already-deleted entries that we'd then have to re-process.
-        to_delete.append(fname)
-        return None, skipped_unsupported, to_delete
-    if image_only and not is_supported(fname):
-        return None, skipped_unsupported + 1, to_delete
-    return (fname, sha1), skipped_unsupported, to_delete
+    return ChangesSummary(
+        all_files=all_files,
+        to_delete=to_delete,
+        skipped_unsupported=skipped_unsupported,
+    )
 
 
 def _download_all(
     base: str,
     host_key: str,
     session_key: str,
-    all_files: list[tuple[str, str]],
+    all_files: list[PendingMediaFile],
     media: Path,
     *,
     batch_limit: int,
     max_file_bytes: int | None,
     max_collection_bytes: int | None,
     progress_callback: ProgressCallback | None,
-) -> tuple[list[str], int, int, bool]:
+) -> DownloadSummary:
     """Downloads every entry in ``all_files`` in batches of ``batch_limit``."""
 
     downloaded: list[str] = []
     bytes_written = 0
     skipped_oversize = 0
+    skipped_existing = 0
     total_files = len(all_files)
+    progress_total = max(total_files, 1)
 
     # Compute the existing on-disk size once so we can enforce the
     # collection-wide budget without re-scanning the directory per file.
@@ -311,12 +313,34 @@ def _download_all(
             # there is no point downloading zips we will not extract.
             break
 
-        batch = [f for f, _ in all_files[i : i + batch_limit]]
-        if not batch:
+        batch_with_sha = all_files[i : i + batch_limit]
+        if not batch_with_sha:
             continue
 
-        _log_batch_start(i, batch, total_files)
-        zip_bytes = _fetch_zip(base, host_key, session_key, batch)
+        end_index = min(i + len(batch_with_sha), total_files)
+        filtered = _filter_batch_by_local_hash(batch_with_sha, media)
+        skipped_existing += filtered.skipped_existing
+        logger.info(
+            "Media batch %d-%d/%d: %d to download, %d already present",
+            i, end_index, total_files,
+            len(filtered.to_download), filtered.skipped_existing,
+        )
+
+        if not filtered.to_download:
+            # Every file in this batch is already up-to-date locally —
+            # skip the HTTP request entirely to save bandwidth.
+            _emit_progress(
+                progress_callback, "downloadFiles",
+                end_index, progress_total,
+                len(downloaded), skipped_existing,
+            )
+            continue
+
+        _log_batch_start(i, [p.fname for p in filtered.to_download], total_files)
+        zip_bytes = _fetch_zip(
+            base, host_key, session_key,
+            [p.fname for p in filtered.to_download],
+        )
         remaining_budget = (
             max_collection_bytes - base_size - bytes_written
             if max_collection_bytes is not None
@@ -340,11 +364,17 @@ def _download_all(
 
         _emit_progress(
             progress_callback, "downloadFiles",
-            min(i + len(batch), total_files), max(total_files, 1),
-            len(downloaded),
+            end_index, progress_total,
+            len(downloaded), skipped_existing,
         )
 
-    return downloaded, bytes_written, skipped_oversize, collection_too_large
+    return DownloadSummary(
+        downloaded=downloaded,
+        bytes_written=bytes_written,
+        skipped_oversize=skipped_oversize,
+        skipped_existing=skipped_existing,
+        collection_too_large=collection_too_large,
+    )
 
 
 def _log_batch_start(i: int, batch: list[str], total: int) -> None:
@@ -356,8 +386,7 @@ def _log_batch_start(i: int, batch: list[str], total: int) -> None:
     )
     if i == 0:
         # Log the full payload of the first request for 400 debugging.
-        with contextlib.suppress(Exception):
-            logger.debug("downloadFiles payload: %s", json.dumps({"files": batch})[:500])
+        logger.debug("downloadFiles payload: %s", json.dumps({"files": batch})[:500])
 
 
 def _fetch_zip(
@@ -382,7 +411,7 @@ def _fetch_zip(
 def _apply_deletions(
     to_delete: list[str],
     media: Path,
-) -> tuple[int, int, int]:
+) -> DeletionSummary:
     """Removes files AnkiWeb has deleted, via :func:`safe_media_path`."""
 
     deleted = 0
@@ -395,7 +424,14 @@ def _apply_deletions(
             delete_errors += 1
             continue
 
-        size = _safe_stat_size(target)
+        try:
+            size = target.stat().st_size
+        except FileNotFoundError:
+            size = 0
+        except OSError:
+            logger.warning("Failed to stat media file before delete: %r", target)
+            size = 0
+
         if safe_unlink(target):
             deleted += 1
             deleted_bytes += size
@@ -403,19 +439,36 @@ def _apply_deletions(
             # ``safe_unlink`` only returns False for OS errors other
             # than FileNotFoundError, which is what we count as an error.
             delete_errors += 1
-    return deleted, deleted_bytes, delete_errors
+    return DeletionSummary(
+        deleted=deleted,
+        bytes_freed=deleted_bytes,
+        delete_errors=delete_errors,
+    )
 
 
-def _safe_stat_size(path: Path) -> int:
-    """Returns ``path``'s size, or 0 if it cannot be stated."""
+def _filter_batch_by_local_hash(
+    batch: list[PendingMediaFile],
+    media: Path,
+) -> FilteredBatch:
+    """Drops entries whose local copy already matches the server's sha1."""
 
-    try:
-        return path.stat().st_size
-    except FileNotFoundError:
-        return 0
-    except OSError:
-        logger.warning("Failed to stat media file before delete: %r", path)
-        return 0
+    to_download: list[PendingMediaFile] = []
+    skipped = 0
+    for entry in batch:
+        target = safe_media_path(entry.fname, media)
+        if target is None:
+            to_download.append(entry)
+            continue
+        local_sha = expected_sha1(target)
+        if local_sha is None:
+            # Missing, unreadable, or not a regular file — re-fetch.
+            to_download.append(entry)
+            continue
+        if local_sha == entry.sha1:
+            skipped += 1
+            continue
+        to_download.append(entry)
+    return FilteredBatch(to_download=to_download, skipped_existing=skipped)
 
 
 def _emit_progress(
@@ -424,12 +477,13 @@ def _emit_progress(
     current: int,
     total: int,
     downloaded: int,
+    skipped_existing: int,
 ) -> None:
     """Invokes ``callback`` with defensive error handling."""
 
     if callback is None:
         return
     try:
-        callback(phase, current, total, downloaded)
+        callback(phase, current, total, downloaded, skipped_existing)
     except Exception:
         logger.exception("progress_callback raised during %s", phase)
