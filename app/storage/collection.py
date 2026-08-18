@@ -76,6 +76,23 @@ class CollectionManager:
             assert self._collection is not None
             return await asyncio.to_thread(fn, self._collection, *args, **kwargs)
 
+    async def peek(
+        self,
+        fn: Callable[..., T],
+        *args: Any,
+        **kwargs: Any,
+    ) -> T | None:
+        """Runs ``fn`` against the collection without taking the run-lock.
+
+        Returns ``None`` if the collection is closed so the caller can simply skip the tick.
+        Does NOT bump ``_last_access`` — the collection is still
+        considered idle while only ``peek`` calls come in.
+        """
+
+        if self._collection is None:
+            return None
+        return await asyncio.to_thread(fn, self._collection, *args, **kwargs)
+
     async def close(self) -> None:
         """Closes the collection if it is open."""
 

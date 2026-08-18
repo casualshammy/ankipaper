@@ -14,6 +14,14 @@ if TYPE_CHECKING:
 
 SyncStatePhase = Literal["collection", "mediaChanges", "downloadFiles"]
 
+ProgressUnit = Literal["bytes", "cards", "files"]
+"""Types of progress units.
+
+- 'bytes': full-sync of collection.
+- 'cards': incremental sync of collection.
+- 'files': media download.
+"""
+
 
 @dataclass(slots=True)
 class SyncState:
@@ -31,13 +39,14 @@ class SyncState:
 
     status: Literal["idle", "running", "done", "error"] = "idle"
     phase: SyncStatePhase | None = None
-    current: int = 0
-    total: int = 0
-    downloaded: int = 0
-    skipped_existing: int = 0
     started_at: float = 0.0
     finished_at: float | None = None
     error: str | None = None
+
+    progress_unit: ProgressUnit | None = None
+    progress_current: int = 0
+    progress_total: int = 0
+    skipped_existing: int = 0
 
     # Unresolved full sync (conflict or one-sided full upload/download).
     conflict_pending: bool = False
@@ -93,9 +102,9 @@ class SyncState:
     def percent(self) -> int:
         """Progress in 0..100, clamped."""
 
-        if self.total <= 0:
+        if self.progress_total <= 0:
             return 0
-        return max(0, min(100, int(100 * self.current / self.total)))
+        return max(0, min(100, int(100 * self.progress_current / self.progress_total)))
 
     @property
     def is_one_sided_conflict(self) -> bool:

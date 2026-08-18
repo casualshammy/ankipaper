@@ -99,7 +99,7 @@ class FilteredBatch(NamedTuple):
     skipped_existing: int
 
 
-ProgressCallback = Callable[[SyncStatePhase, int, int, int, int], None]
+ProgressCallback = Callable[[SyncStatePhase, int, int, int], None]
 
 
 def sync_media_direct(
@@ -130,7 +130,7 @@ def sync_media_direct(
             ``.webp``) and fonts (``.otf``, ``.ttf``, ``.woff``,
             ``.woff2``). Audio, video, JS, etc. are skipped.
         progress_callback: optional callback ``(phase, current, total,
-            downloaded, skipped_existing) -> None``.
+            skipped_existing) -> None``.
         max_file_bytes: if not None, individual files larger than this
             are skipped (with a warning) and not written to disk.
         max_collection_bytes: if not None, the total on-disk size of
@@ -155,7 +155,7 @@ def sync_media_direct(
         base, host_key, session_key, last_usn, server_usn,
         image_only, progress_callback,
     )
-    _emit_progress(progress_callback, "mediaChanges", server_usn, server_usn, 0, 0)
+    _emit_progress(progress_callback, "mediaChanges", server_usn, server_usn, 0)
 
     downloads = _download_all(
         base, host_key, session_key, changes.all_files, media,
@@ -260,7 +260,7 @@ def _collect_changes(
         )
         _emit_progress(
             progress_callback, "mediaChanges",
-            last_usn, max(last_usn, server_usn), 0, 0,
+            last_usn, max(last_usn, server_usn), 0,
         )
         if len(changes) < _MEDIA_CHANGES_BATCH:
             # Less than the limit — this was the last batch.
@@ -332,7 +332,7 @@ def _download_all(
             _emit_progress(
                 progress_callback, "downloadFiles",
                 end_index, progress_total,
-                len(downloaded), skipped_existing,
+                skipped_existing,
             )
             continue
 
@@ -365,7 +365,7 @@ def _download_all(
         _emit_progress(
             progress_callback, "downloadFiles",
             end_index, progress_total,
-            len(downloaded), skipped_existing,
+            skipped_existing,
         )
 
     return DownloadSummary(
@@ -476,7 +476,6 @@ def _emit_progress(
     phase: SyncStatePhase,
     current: int,
     total: int,
-    downloaded: int,
     skipped_existing: int,
 ) -> None:
     """Invokes ``callback`` with defensive error handling."""
@@ -484,6 +483,6 @@ def _emit_progress(
     if callback is None:
         return
     try:
-        callback(phase, current, total, downloaded, skipped_existing)
+        callback(phase, current, total, skipped_existing)
     except Exception:
         logger.exception("progress_callback raised during %s", phase)

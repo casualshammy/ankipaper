@@ -23,6 +23,7 @@ from app.sync.client import (
     try_sync,
 )
 from app.sync.media_http import sync_media_direct
+from app.sync.progress_poller import CollectionProgressPoller
 from app.sync.state import SyncState, SyncStatePhase
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
@@ -115,6 +116,7 @@ async def sync_wait_get(
             {
                 "version": __version__,
                 "phase": "",
+                "progress_unit": state.progress_unit,
                 "percent": 0,
                 "skipped_existing": state.skipped_existing,
                 "error": state.error,
@@ -130,6 +132,7 @@ async def sync_wait_get(
             {
                 "version": __version__,
                 "phase": None,
+                "progress_unit": state.progress_unit,
                 "percent": 100,
                 "skipped_existing": state.skipped_existing,
                 "error": None,
@@ -146,6 +149,7 @@ async def sync_wait_get(
         {
             "version": __version__,
             "phase": state.phase or "collection",
+            "progress_unit": state.progress_unit,
             "percent": state.percent,
             "skipped_existing": state.skipped_existing,
             "error": None,
@@ -289,15 +293,18 @@ async def _run_full_sync_background(
     state = account.sync_state
     state.status = "running"
     state.phase = "collection"
-    state.current = 0
-    state.total = 0
-    state.downloaded = 0
+    state.progress_unit = None
+    state.progress_current = 0
+    state.progress_total = 0
+    state.skipped_existing = 0
     state.started_at = time.time()
     state.finished_at = None
     state.error = None
 
-    manager = account.manager
+    poller = CollectionProgressPoller(account, state)
+    poller.start()
     try:
+        manager = account.manager
         if is_upload:
             await manager.run(full_upload, host_key, endpoint)
         else:
@@ -312,6 +319,8 @@ async def _run_full_sync_background(
         logger.exception("Full %s failed", "upload" if is_upload else "download")
         _fail_sync(state, error=f"full_{'upload' if is_upload else 'download'}_failed", account=account)
         return
+    finally:
+        await poller.stop()
 
     _start_media_sync_background(
         account=account,
@@ -394,60 +403,65 @@ async def _run_collection_sync_background(
     state: SyncState = account.sync_state
     state.status = "running"
     state.phase = "collection"
-    state.current = 0
-    state.total = 0
-    state.downloaded = 0
+    state.progress_unit = None
+    state.progress_current = 0
+    state.progress_total = 0
+    state.skipped_existing = 0
     state.started_at = time.time()
     state.finished_at = None
     state.error = None
 
-    manager = account.manager
-
+    poller = CollectionProgressPoller(account, state)
+    poller.start()
     try:
-        result = await manager.run(try_sync, host_key)
-    except Exception as exc:
-        logger.exception("Background collection sync raised")
-        _fail_sync(state, error=str(exc), account=account)
-        return
-
-    if result.auth_expired:
-        _fail_sync(state, error="auth_expired", account=account)
-        return
-
-    if result.error:
-        _fail_sync(state, error=result.error, account=account)
-        return
-
-    if result.full_sync_kind is not None:
-        state.begin_conflict(
-            full_sync_kind=result.full_sync_kind,
-            new_endpoint=result.new_endpoint,
-            server_message=result.server_message,
-        )
-        # No background activity while waiting for the user to resolve.
-        state.status = "idle"
-        state.phase = None
-        state.finished_at = time.time()
-        return
-
-    is_empty = await _collection_is_empty(account)
-    if is_empty:
-        logger.info("Local collection empty, falling back to full download")
+        manager = account.manager
         try:
-            full = await manager.run(full_download, host_key, result.new_endpoint)
-        except AuthExpiredError:
-            _fail_sync(state, error="auth_expired", account=account)
-            return
-        except SyncError as exc:
+            result = await manager.run(try_sync, host_key)
+        except Exception as exc:
+            logger.exception("Background collection sync raised")
             _fail_sync(state, error=str(exc), account=account)
             return
-        except Exception:
-            logger.exception("Full download failed")
-            _fail_sync(state, error="full_download_failed", account=account)
+
+        if result.auth_expired:
+            _fail_sync(state, error="auth_expired", account=account)
             return
-        if full.error:
-            _fail_sync(state, error=full.error, account=account)
+
+        if result.error:
+            _fail_sync(state, error=result.error, account=account)
             return
+
+        if result.full_sync_kind is not None:
+            state.begin_conflict(
+                full_sync_kind=result.full_sync_kind,
+                new_endpoint=result.new_endpoint,
+                server_message=result.server_message,
+            )
+            # No background activity while waiting for the user to resolve.
+            state.status = "idle"
+            state.phase = None
+            state.finished_at = time.time()
+            return
+
+        is_empty = await _collection_is_empty(account)
+        if is_empty:
+            logger.info("Local collection empty, falling back to full download")
+            try:
+                full = await manager.run(full_download, host_key, result.new_endpoint)
+            except AuthExpiredError:
+                _fail_sync(state, error="auth_expired", account=account)
+                return
+            except SyncError as exc:
+                _fail_sync(state, error=str(exc), account=account)
+                return
+            except Exception:
+                logger.exception("Full download failed")
+                _fail_sync(state, error="full_download_failed", account=account)
+                return
+            if full.error:
+                _fail_sync(state, error=full.error, account=account)
+                return
+    finally:
+        await poller.stop()
 
     # Collection done. Hand off to media sync.
     _start_media_sync_background(
@@ -470,9 +484,10 @@ def _start_media_sync_background(
     # Reset only media-specific fields; keep ``started_at`` from collection phase.
     state.status = "running"
     state.phase = "mediaChanges"
-    state.current = 0
-    state.total = 0
-    state.downloaded = 0
+    state.progress_unit = "files"
+    state.progress_current = 0
+    state.progress_total = 0
+    state.skipped_existing = 0
     state.finished_at = None
     state.error = None
 
@@ -501,9 +516,9 @@ async def _run_media_sync_background(
     state: SyncState = account.sync_state
     state.status = "running"
     state.phase = "mediaChanges"
-    state.current = 0
-    state.total = 0
-    state.downloaded = 0
+    state.progress_unit = "files"
+    state.progress_current = 0
+    state.progress_total = 0
     state.skipped_existing = 0
     if not state.started_at:
         state.started_at = time.time()
@@ -514,12 +529,11 @@ async def _run_media_sync_background(
         phase: SyncStatePhase,
         current: int,
         total: int,
-        downloaded: int,
         skipped_existing: int) -> None:
         state.phase = phase
-        state.current = current
-        state.total = total
-        state.downloaded = downloaded
+        state.progress_unit = "files"
+        state.progress_current = current
+        state.progress_total = total
         state.skipped_existing = skipped_existing
 
     try:
@@ -537,7 +551,9 @@ async def _run_media_sync_background(
         state.status = "done"
         state.phase = None
         state.finished_at = time.time()
-        state.current = state.total = 100
+        state.progress_unit = None
+        state.progress_current = 100
+        state.progress_total = 100
         logger.info(
             "Media sync completed in %.1fs",
             state.finished_at - state.started_at,

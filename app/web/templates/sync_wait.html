@@ -10,12 +10,16 @@
       <p class="error">Sync error: {{ error }}</p>
     {% elif phase == "collection" %}
       <div class="indicator">&hellip;</div>
-      <p class="notice">Syncing decks&hellip;</p>
+      {% if progress_unit == "bytes" %}
+        <p class="notice">Syncing decks... ({{ percent }}%)</p>
+      {% else %}
+        <p class="notice">Syncing decks...</p>
+      {% endif %}
       <p class="muted">This page updates automatically.</p>
       <meta http-equiv="refresh" content="2">
     {% elif phase in ("mediaChanges", "downloadFiles") %}
       <div class="indicator">&hellip;</div>
-      <p class="notice">Syncing media ({{ percent }}%)&hellip;</p>
+      <p class="notice">Syncing media ({{ percent }}%)...</p>
       {% if skipped_existing %}
         <p class="muted">Skipped (already present): {{ skipped_existing }}</p>
       {% endif %}
@@ -23,7 +27,7 @@
       <meta http-equiv="refresh" content="2">
     {% elif phase is none %}
       <div class="indicator">✔</div>
-      <p class="notice">Done. Loading decks&hellip;</p>
+      <p class="notice">Done. Loading decks...</p>
       <meta http-equiv="refresh" content="1;url=/">
     {% endif %}
     <p class="actions"><a class="btn" href="/">Back to decks</a></p>
