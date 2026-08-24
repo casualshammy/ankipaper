@@ -20,8 +20,6 @@ from typing import Any, TypeVar
 
 import anki.collection
 
-_common_logger = logging.getLogger(__name__)
-
 T = TypeVar("T")
 
 MEDIA_DIR_NAME = "collection.media"
@@ -37,7 +35,7 @@ class CollectionManager:
             collection_path: path to ``collection.anki21`` (not to the directory).
         """
 
-        self._logger = _common_logger.getChild(account_name)
+        self._logger = logging.getLogger(f"{__name__} [{account_name}]")
         self._lock = asyncio.Lock()
         self._collection: anki.collection.Collection | None = None
         self._last_access: float = 0.0

@@ -9,7 +9,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 
@@ -130,6 +130,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Health probe used by docker healthcheck."""
 
         return JSONResponse({"status": "ok", "version": __version__})
+
+    @app.head("/", include_in_schema=False)
+    async def home_head() -> Response:
+        """Lightweight probe: the server is up."""
+
+        return Response(status_code=200)
 
     return app
 
