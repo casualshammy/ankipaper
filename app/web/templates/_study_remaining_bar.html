@@ -17,10 +17,6 @@
     </button>
     <div class="flag-buttons">
       <button type="button"
-              class="flag-btn{% if card.flag == 0 %} flag-btn-on{% endif %}"
-              data-flag="0"
-              aria-label="No flag">—</button>
-      <button type="button"
               class="flag-btn{% if card.flag == 1 %} flag-btn-on{% endif %}"
               data-flag="1"
               aria-label="Red">R</button>
@@ -84,12 +80,11 @@
       flagBtn.addEventListener("click", function () {
         const val = parseInt(flagBtn.dataset.flag, 10);
         const prev = flag || "0";
-        if (String(val) === prev)
-          return;
+        const next = String(val) === prev ? 0 : val;
 
         flagButtons.forEach(function (b) { b.disabled = true; });
 
-        post("/set-card-flag", { flag: val })
+        post("/set-card-flag", { flag: next })
           .then(function (_res) {
             if (!_res.ok) {
               if (_res.status === 401)
@@ -99,8 +94,10 @@
             }
 
             flagButtons.forEach(function (b) { b.classList.remove("flag-btn-on"); });
-            flagBtn.classList.add("flag-btn-on");
-            flag = String(val);
+            if (next !== 0) {
+              flagBtn.classList.add("flag-btn-on");
+            }
+            flag = String(next);
           })
           .finally(function () {
             flagButtons.forEach(function (b) { b.disabled = false; });
