@@ -94,7 +94,7 @@ async def login_post(
         )
 
     store = get_account_store()
-    if not store.can_create_account(username, request.app.state.settings.data_max_bytes):
+    if not store.can_create_account_on_disk(username, request.app.state.settings.data_max_bytes):
         return templates.TemplateResponse(
             request,
             "login.html",

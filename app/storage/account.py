@@ -15,7 +15,6 @@ and is used for display in the UI.
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +28,24 @@ logger = logging.getLogger(__name__)
 _HOSTKEY_FILE = "hostkey.enc"
 _COLLECTION_FILE = "collection.anki21"
 _LAST_USN_FILE = "media.last_usn"
+
+_DATA_ROOT = Path("/data")
+_ACCOUNTS_DIR = _DATA_ROOT / "accounts"
+
+
+def _dir_size_bytes(root: Path) -> int:
+    """Returns the total size of all regular files under ``root``.
+
+    Symlinks are not followed. Files that disappear mid-walk are skipped.
+    """
+    total = 0
+    for path in root.rglob("*"):
+        try:
+            if path.is_file():
+                total += path.stat().st_size
+        except OSError:
+            continue
+    return total
 
 
 def sanitize_account_id(username: str) -> str:
@@ -122,45 +139,52 @@ class AccountStore:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._accounts: dict[str, Account] = {}
-        self._accounts_dir: Path = Path("/data") / "accounts"
-        self._accounts_dir.mkdir(parents=True, exist_ok=True)
+        self._accounts_dir: Path = _ACCOUNTS_DIR
+        _ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
 
     @property
     def accounts_dir(self) -> Path:
         return self._accounts_dir
 
+    def _safe_account_dir(self, username_or_id: str) -> Path | None:
+        """Returns the account dir for a sanitised id, or ``None`` if invalid."""
+
+        try:
+            return _ACCOUNTS_DIR / sanitize_account_id(username_or_id)
+        except ValueError:
+            return None
+
     def account_exists_on_disk(self, username: str) -> bool:
         """Returns whether an account directory already exists on disk."""
 
-        try:
-            account_id = sanitize_account_id(username)
-        except ValueError:
-            return False
-        return (self._accounts_dir / account_id).is_dir()
+        path = self._safe_account_dir(username)
+        return path is not None and path.is_dir()
 
-    def data_size_bytes(self) -> int:
-        """Returns the total regular-file size under ``/data``."""
+    def total_data_bytes(self) -> int:
+        """Returns the total regular-file size under the data root."""
 
-        total = 0
-        for root, _, filenames in os.walk("/data", followlinks=False):
-            for filename in filenames:
-                try:
-                    total += (Path(root) / filename).stat().st_size
-                except OSError:
-                    continue
-        return total
+        return _dir_size_bytes(_DATA_ROOT)
 
-    def can_create_account(self, username: str, max_data_bytes: int) -> bool:
+    def can_create_account_on_disk(self, username: str, max_data_bytes: int) -> bool:
         """Returns whether a new account may be registered under the data limit."""
 
         if self.account_exists_on_disk(username):
             return True
-        return max_data_bytes == 0 or self.data_size_bytes() <= max_data_bytes
+        if max_data_bytes == 0:  # 0 = unlimited
+            return True
+        return self.total_data_bytes() <= max_data_bytes
 
     def get_or_create(self, username: str) -> Account:
         """Returns the existing account or creates a new one from the username."""
 
-        return self._cache_account(sanitize_account_id(username), username)
+        account_id = sanitize_account_id(username)
+        return self._cache_account(
+            Account(
+                id=account_id,
+                username=username,
+                data_dir=_ACCOUNTS_DIR / account_id,
+            )
+        )
 
     def get(self, account_id: str) -> Account | None:
         """Returns the already-loaded account by ``account_id``, or ``None``."""
@@ -185,39 +209,32 @@ class AccountStore:
             directory exists on disk.
         """
 
-        try:
-            sanitized = sanitize_account_id(account_id)
-        except ValueError:
-            return None
         # Without an on-disk directory there is no account to re-hydrate.
         # We check this before constructing an ``Account`` so we don't end
         # up with an in-memory object whose hostKey will never be loaded.
-        if not (self._accounts_dir / sanitized).is_dir():
+        path = self._safe_account_dir(account_id)
+        if path is None or not path.is_dir():
             return None
-        return self._cache_account(sanitized, sanitized)
+        return self._cache_account(Account(id=path.name, username=path.name, data_dir=path))
 
-    def _cache_account(self, account_id: str, username: str) -> Account:
-        """Returns the cached account, constructing it on first access.
+    def _cache_account(self, account: Account) -> Account:
+        """Returns the cached account, storing it on first access.
 
         Takes the registry lock, returns the existing entry if any, and
-        otherwise builds an ``Account`` from ``<accounts_dir>/<id>`` and
-        stores it. Both ``get_or_create`` and ``ensure`` delegate here so
-        the cache/lookup logic lives in one place.
+        otherwise stores ``account``. Both ``get_or_create`` and ``ensure``
+        delegate here so the cache/lookup logic lives in one place.
         """
 
         with self._lock:
-            existing = self._accounts.get(account_id)
+            existing = self._accounts.get(account.id)
             if existing is not None:
                 return existing
-
-            data_dir = self._accounts_dir / account_id
-            account = Account(id=account_id, username=username, data_dir=data_dir)
-            self._accounts[account_id] = account
+            self._accounts[account.id] = account
             logger.info(
                 "Loaded account: id=%s username=%s dir=%s",
-                account_id,
-                username,
-                data_dir,
+                account.id,
+                account.username,
+                account.data_dir,
             )
             return account
 
