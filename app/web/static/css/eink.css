@@ -216,6 +216,14 @@ table.decks td.num .num-non-zero {
   text-decoration: underline;
 }
 
+.deck-toggle {
+  display: inline-block;
+  min-width: 2em;
+  text-align: center;
+  font-weight: bold;
+  text-decoration: none;
+}
+
 .deck-link {
   font-weight: bold;
 }
