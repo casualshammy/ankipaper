@@ -12,7 +12,7 @@ from starlette.requests import Request
 
 from app.metrics.definitions import HTTP_REQUEST_DURATION, HTTP_REQUESTS
 
-_EXCLUDED_PREFIXES: frozenset[str] = frozenset("/healthz")
+_EXCLUDED_PREFIXES: frozenset[str] = frozenset({"/healthz"})
 _EXCLUDED_EXACT: frozenset[str] = frozenset({"/favicon.ico"})
 
 
