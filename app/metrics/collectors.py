@@ -21,19 +21,27 @@ class AnkiPaperCollector(Collector):
         except Exception:
             logger.exception("AnkiPaperCollector: store unavailable")
             return
-
-        managers = store.iter_managers()
-        accounts_total = GaugeMetricFamily(
+        
+        metric_accounts_total = GaugeMetricFamily(
             "ankipaper_accounts_total",
             "Total number of registered AnkiWeb accounts.",
         )
-        accounts_total.add_metric([], len(managers))
-        yield accounts_total
+        metric_accounts_total.add_metric([], store.total_accounts_on_disk())
+        yield metric_accounts_total
 
-        collections_open = GaugeMetricFamily(
+        managers = store.iter_managers()
+        metric_collections_open = GaugeMetricFamily(
             "ankipaper_collections_open",
             "Number of accounts with a currently open collection.",
         )
         open_count = sum(1 for m in managers if m.is_open())
-        collections_open.add_metric([], open_count)
-        yield collections_open
+        metric_collections_open.add_metric([], open_count)
+        yield metric_collections_open
+
+        metric_data_folder_size = GaugeMetricFamily(
+            "ankipaper_data_folder_size",
+            "Total size of the data folder for all accounts.",
+        )
+        data_folder_size = store.total_data_bytes()
+        metric_data_folder_size.add_metric([], data_folder_size)
+        yield metric_data_folder_size

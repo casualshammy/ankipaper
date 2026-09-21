@@ -198,6 +198,11 @@ class AccountStore:
         with self._lock:
             return [a.manager for a in self._accounts.values()]
 
+    def total_accounts_on_disk(self) -> int:
+        """Returns the total number of account directories on disk."""
+
+        return sum(1 for _ in _ACCOUNTS_DIR.iterdir() if _.is_dir())
+
     def ensure(self, account_id: str) -> Account | None:
         """Returns the account by id, loading it from disk if necessary.
 
