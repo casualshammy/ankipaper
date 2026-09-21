@@ -21,6 +21,7 @@ dependencies = [
     "zstandard>=0.23",
     "anki>=25.6",
     "redis>=5.0",
+    "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]

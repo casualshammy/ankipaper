@@ -46,6 +46,11 @@ class CollectionManager:
 
         return self._path.exists()
 
+    def is_open(self) -> bool:
+        """True if the underlying Anki collection is currently open in memory."""
+
+        return self._collection is not None
+
     def media_dir(self) -> Path:
         """Path to the media directory (sibling of ``collection.media``)."""
 

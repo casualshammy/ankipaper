@@ -94,6 +94,8 @@ Settings are read from environment variables or `.env` using the `ANKIPAPER_` pr
 | `ANKIPAPER_DATA_MAX_BYTES` | `0` | Maximum total `/data` size for creating new accounts. `0` disables the limit; existing accounts remain accessible. |
 | `ANKIPAPER_MEDIA_MAX_FILE_BYTES` | `1048576` (1 MiB) | Maximum size of one media file. Larger files are skipped during media sync. |
 | `ANKIPAPER_MEDIA_MAX_COLLECTION_BYTES` | `209715200` (200 MiB) | Maximum size of `collection.media/`. When the existing directory is at or above the limit, new media files are not written. |
+| `ANKIPAPER_METRICS_USERNAME` | `""` | HTTP Basic username required by the Prometheus scraper. Empty disables /metrics with HTTP 503. |
+| `ANKIPAPER_METRICS_PASSWORD` | `""` | HTTP Basic password required by the Prometheus scraper. Empty disables /metrics with HTTP 503. |
 
 Redis is required for protected login and sync operations. If Redis is unavailable, rate limiting fails closed: login returns an error and sync is blocked rather than running without protection.
 

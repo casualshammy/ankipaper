@@ -12,9 +12,12 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
+from prometheus_client import REGISTRY
 
 from app import __version__
 from app.config import Settings, get_settings
+from app.metrics.collectors import AnkiPaperCollector
+from app.metrics.middleware import MetricsMiddleware
 from app.storage.account import get_account_store
 from app.web.ratelimit import client_ip
 from app.web.session import read_session
@@ -37,6 +40,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
 
     settings = settings or get_settings()
+
+    REGISTRY.register(AnkiPaperCollector())
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -67,6 +72,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates = Jinja2Templates(
         directory=str(BASE_DIR / "web" / "templates"),
     )
+    
+    app.add_middleware(MetricsMiddleware)
 
     # Replace uvicorn's built-in access log
     @app.middleware("http")
@@ -113,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     from app.web.routes import auth as auth_routes
     from app.web.routes import media as media_routes
+    from app.web.routes import metrics as metrics_router
     from app.web.routes import seo as seo_routes
     from app.web.routes import static as static_routes
     from app.web.routes import study as study_routes
@@ -120,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth_routes.router)
     app.include_router(media_routes.router)
+    app.include_router(metrics_router.router)
     app.include_router(seo_routes.router)
     app.include_router(static_routes.router)
     app.include_router(sync_routes.router)

@@ -78,6 +78,21 @@ class Settings(BaseSettings):
         description="Redis connection URL used for rate limiting.",
     )
 
+    metrics_username: str = Field(
+        default="",
+        description=(
+            "HTTP Basic username required by the Prometheus scraper. "
+            "Empty disables /metrics with HTTP 503."
+        ),
+    )
+    metrics_password: str = Field(
+        default="",
+        description=(
+            "HTTP Basic password required by the Prometheus scraper. "
+            "Empty disables /metrics with HTTP 503."
+        ),
+    )
+
     login_ip_max_attempts: int = Field(
         default=5,
         ge=1,
