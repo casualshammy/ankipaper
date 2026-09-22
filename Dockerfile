@@ -7,17 +7,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml README.md ./
 RUN pip install --upgrade pip \
     && pip install .
 
 COPY app ./app
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 RUN useradd --create-home --uid 1000 ankipaper \
     && mkdir -p /data \
     && chown -R ankipaper:ankipaper /data /app
 
-USER ankipaper
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 EXPOSE 8000
 

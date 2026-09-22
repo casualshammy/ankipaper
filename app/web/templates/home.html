@@ -77,9 +77,19 @@
         </tr>
       </thead>
       <tbody>
-        {% for d in decks %}
-          <tr>
-            <td><a class="deck-link" href="/deck/{{ d.deck_id }}/study">{{ d.name }}</a></td>
+        {% for row in decks %}
+          {% set d = row.stats %}
+          <tr id="deck-{{ d.deck_id }}">
+            <td style="padding-left: {{ 6 + row.depth * 18 }}px">
+              {% if row.toggle_query is not none %}
+                <a class="deck-toggle" href="/?expanded={{ row.toggle_query }}#deck-{{ d.deck_id }}"
+                   aria-expanded="{{ 'true' if row.is_expanded else 'false' }}"
+                   aria-label="{{ 'Collapse' if row.is_expanded else 'Expand' }} {{ d.name }}">[{{ '−' if row.is_expanded else '+' }}]</a>
+              {% else %}
+                <span class="deck-toggle" aria-hidden="true">&nbsp;</span>
+              {% endif %}
+              <a class="deck-link" href="/deck/{{ d.deck_id }}/study" title="{{ d.name }}">{{ row.label }}</a>
+            </td>
             {{ cell_num(d.new) }}
             {{ cell_num(d.learning) }}
             {{ cell_num(d.review) }}
