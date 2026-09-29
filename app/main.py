@@ -5,11 +5,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 from prometheus_client import REGISTRY
@@ -17,10 +16,8 @@ from prometheus_client import REGISTRY
 from app import __version__
 from app.config import Settings, get_settings
 from app.metrics.collectors import AnkiPaperCollector
-from app.metrics.middleware import MetricsMiddleware
 from app.storage.account import get_account_store
-from app.web.ratelimit import client_ip
-from app.web.session import read_session
+from app.web.middlewares import AccessLogMiddleware, MetricsMiddleware
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,34 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     
     app.add_middleware(MetricsMiddleware)
-
-    # Replace uvicorn's built-in access log
-    @app.middleware("http")
-    async def access_log_middleware(request: Request, call_next):
-        start = time.monotonic()
-        response = await call_next(request)
-        duration_ms = (time.monotonic() - start) * 1000.0
-        ip = client_ip(request, settings)
-        query = f"?{request.url.query}" if request.url.query else ""
-        user = "-"
-        session = read_session(request)
-        if session.is_authenticated and session.account_id is not None:
-            user = session.account_id
-        logger.info(
-            '%s [%s] <<- "%s %s%s" %d %.2fms',
-            ip,
-            user,
-            request.method,
-            request.url.path,
-            query,
-            response.status_code,
-            duration_ms,
-        )
-        if settings.debug_headers:
-            logger.info("headers for %s %s:", request.method, request.url.path)
-            for name, value in request.headers.items():
-                logger.info("  %s: %s", name, value)
-        return response
+    app.add_middleware(AccessLogMiddleware, settings, logger)
 
     # CSRF token generator is exposed to every template via the
     # ``csrf_token(request)`` callable — see ``app/web/csrf.py``.

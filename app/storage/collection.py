@@ -28,10 +28,11 @@ MEDIA_DIR_NAME = "collection.media"
 class CollectionManager:
     """Manager of the local Anki collection for a single account."""
 
-    def __init__(self, account_name, collection_path: Path) -> None:
+    def __init__(self, account_name: str, collection_path: Path) -> None:
         """Creates a manager for the collection at the given path.
 
         Args:
+            account_name: name of the account this collection belongs to.
             collection_path: path to ``collection.anki21`` (not to the directory).
         """
 

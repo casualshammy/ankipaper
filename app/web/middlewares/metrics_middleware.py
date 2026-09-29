@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import time
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
+from starlette.responses import Response
 
 from app.metrics.definitions import HTTP_REQUEST_DURATION, HTTP_REQUESTS
 
@@ -19,7 +20,7 @@ _EXCLUDED_EXACT: frozenset[str] = frozenset({"/favicon.ico"})
 class MetricsMiddleware(BaseHTTPMiddleware):
     """Records HTTP request count and latency per route template."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
         if not self._should_measure(path):
             return await call_next(request)
@@ -54,7 +55,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
         route = request.scope.get("route")
         if route is not None and getattr(route, "path", None):
-            return route.path
+            return str(route.path)
         return "__not_found__"
 
     @staticmethod

@@ -212,7 +212,11 @@ def _read_meta(zf: zipfile.ZipFile) -> dict[str, str]:
     if _META_ENTRY not in zf.namelist():
         return {}
     with zf.open(_META_ENTRY) as f:
-        return json.loads(f.read().decode("utf-8"))
+        json_str = f.read().decode("utf-8")
+        obj = json.loads(json_str)
+        if not isinstance(obj, dict):
+            raise ValueError(f"Invalid _meta format: expected dict, got {type(obj).__name__}")
+        return obj
 
 
 def _extract_entries(
