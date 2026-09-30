@@ -15,6 +15,8 @@ and is used for display in the UI.
 from __future__ import annotations
 
 import logging
+import os
+from stat import S_ISDIR, S_ISREG
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,17 +36,21 @@ _ACCOUNTS_DIR = _DATA_ROOT / "accounts"
 
 
 def _dir_size_bytes(root: Path) -> int:
-    """Returns the total size of all regular files under ``root``.
+    """Returns the total size of all regular files under ``root``. Symlinks are not followed."""
 
-    Symlinks are not followed. Files that disappear mid-walk are skipped.
-    """
     total = 0
-    for path in root.rglob("*"):
-        try:
-            if path.is_file():
-                total += path.stat().st_size
-        except OSError:
-            continue
+    stack = [str(root)]
+    while len(stack) > 0:
+        for entry in os.scandir(stack.pop()):
+            try:
+                stat = entry.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            if S_ISDIR(stat.st_mode):
+                stack.append(entry.path)
+            elif S_ISREG(stat.st_mode):
+                total += stat.st_size
+
     return total
 
 
