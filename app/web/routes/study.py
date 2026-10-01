@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, Form, Query, Request
@@ -63,18 +64,25 @@ async def home(
     logger = _common_logger.getChild(account.username)
     manager = account.manager
     has_collection = manager.has_collection()
+    collection_was_open = manager.is_open() if has_collection else False
     decks: list = []
     error: str | None = None
 
+    t_total_start = time.monotonic()
+    t_decks_start = t_total_start
     if has_collection:
         try:
             decks = await manager.run(list_deck_stats)
         except Exception as exc:
             error = f"Failed to read deck stats: {exc}"
+    t_decks_ms = (time.monotonic() - t_decks_start) * 1000.0
 
+    t_sync_start = time.monotonic()
     is_sync_required = await _is_sync_required(logger, account)
+    t_sync_ms = (time.monotonic() - t_sync_start) * 1000.0
 
-    return templates.TemplateResponse(
+    t_render_start = time.monotonic()
+    response = templates.TemplateResponse(
         request,
         "home.html",
         {
@@ -94,6 +102,22 @@ async def home(
             "sync_required": is_sync_required,
         },
     )
+    t_render_ms = (time.monotonic() - t_render_start) * 1000.0
+    t_total_ms = (time.monotonic() - t_total_start) * 1000.0
+
+    logger.info(
+        "home timing: total=%.1fms decks=%.1fms sync_probe=%.1fms render=%.1fms "
+        "collection_was_open_before=%s collection_is_open_after=%s decks_count=%d sync_required=%s",
+        t_total_ms,
+        t_decks_ms,
+        t_sync_ms,
+        t_render_ms,
+        collection_was_open,
+        manager.is_open(),
+        len(decks),
+        is_sync_required,
+    )
+    return response
 
 
 @router.post("/deck/{deck_id}/rebuild", response_model=None)
