@@ -75,6 +75,35 @@ The Compose stack starts:
 
 The application is available at `http://localhost:8000`. Persistent data is stored in `./.data/`; Redis persistence is stored in `./.redis/`.
 
+On startup, the application container fixes ownership of `/data` (including existing
+files) and then runs the server as the unprivileged `ankipaper` user (UID 1000).
+This also handles a root-owned `./.data/` directory created by Docker. If you set
+an explicit container `user`, prepare the data directory so that user can write
+to it; automatic ownership repair requires the default startup user.
+
+After updating an existing checkout, refresh your copied Compose file (merge
+changes if you customized it) and rebuild. Keep your existing `.env` and data:
+
+```bash
+cp deploy/docker-compose.yml docker-compose.yml
+docker compose up --build -d
+docker compose ps
+```
+
+### Redis memory overcommit warning
+
+If Redis logs `Memory overcommit must be enabled`, enable it on the Linux Docker
+host. The warning does not cause the application's `/data/accounts` permission
+error, but can affect Redis background saves:
+
+```bash
+sudo sysctl -w vm.overcommit_memory=1
+echo 'vm.overcommit_memory = 1' | sudo tee /etc/sysctl.d/99-ankipaper-redis.conf
+```
+
+The first command applies the setting immediately; the file preserves it across
+reboots. This is a host setting, so it is not configured in Compose.
+
 ## Configuration
 
 Settings are read from environment variables or `.env` using the `ANKIPAPER_` prefix. `deploy/.env.example` contains an example.

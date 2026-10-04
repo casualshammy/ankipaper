@@ -32,6 +32,7 @@ from app.domain.scheduler import (
 from app.storage.account import Account
 from app.sync.client import is_sync_required_or_throw
 from app.web.csrf import require_csrf
+from app.web.decks import build_deck_rows
 from app.web.deps import get_current_account_optional
 
 _common_logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ async def home(
     rebuild_error: str | None = None,
     empty_ok: int | None = None,
     empty_error: str | None = None,
+    expanded: str = "",
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
     """Renders the landing page (anonymous) or the list of decks."""
@@ -88,7 +90,7 @@ async def home(
         {
             "version": __version__,
             "account": account,
-            "decks": decks,
+            "decks": build_deck_rows(decks, expanded),
             "has_collection": has_collection,
             "error": error,
             "sync_ok": sync_ok,
