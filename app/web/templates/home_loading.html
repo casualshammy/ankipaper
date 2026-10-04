@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}Loading — AnkiPaper{% endblock %}
+
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block content %}
+  <div class="sync-wait">
+    <div class="indicator">&hellip;</div>
+    <p class="notice">Loading your decks...</p>
+    <p class="muted">This page updates automatically.</p>
+    <meta http-equiv="refresh" content="{{ refresh_interval_seconds }}">
+  </div>
+{% endblock %}

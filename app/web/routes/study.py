@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from math import ceil
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, Form, Query, Request
@@ -13,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from app import __version__
 from app.domain.scheduler import (
     CardIntervals,
+    DeckStats,
     Rating,
     answer_card,
     card_deck_matches_or_descends,
@@ -35,7 +38,7 @@ from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
 
 _common_logger = logging.getLogger(__name__)
-
+_deck_stats_inflight: dict[str, asyncio.Task[list[DeckStats]]] = {}
 router = APIRouter()
 
 @router.get("/", response_model=None)
@@ -65,16 +68,38 @@ async def home(
     manager = account.manager
     has_collection = manager.has_collection()
     collection_was_open = manager.is_open() if has_collection else False
-    decks: list = []
+    decks: list[DeckStats] = []
     error: str | None = None
 
     t_total_start = time.monotonic()
     t_decks_start = t_total_start
+
     if has_collection:
+        inflight = _deck_stats_inflight.get(account.id)
+        if inflight is None or inflight.done():
+            inflight = asyncio.create_task(manager.run(list_deck_stats))
+            _deck_stats_inflight[account.id] = inflight
+
+        max_task_time_sec = 2
         try:
-            decks = await manager.run(list_deck_stats)
+            await asyncio.wait_for(asyncio.shield(inflight), timeout=max_task_time_sec)
+            _deck_stats_inflight.pop(account.id, None)
+            decks = inflight.result()
+        except TimeoutError:
+            logger.warning(f"home loading page: deck-stats fetch exceeded {max_task_time_sec}s") 
+            return templates.TemplateResponse(
+                request,
+                "home_loading.html",
+                {
+                    "version": __version__,
+                    "account": account,
+                    "refresh_interval_seconds": ceil(max_task_time_sec),
+                })
         except Exception as exc:
-            error = f"Failed to read deck stats: {exc}"
+            _deck_stats_inflight.pop(account.id, None)
+            error = "Failed to read deck stats!"
+            logger.error(f"Failed to read deck stats: {exc}")
+
     t_decks_ms = (time.monotonic() - t_decks_start) * 1000.0
 
     t_sync_start = time.monotonic()

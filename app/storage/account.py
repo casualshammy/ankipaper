@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import logging
 import os
-from stat import S_ISDIR, S_ISREG
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from stat import S_ISDIR, S_ISREG
 
 from app.storage import secrets
 from app.storage.collection import CollectionManager
