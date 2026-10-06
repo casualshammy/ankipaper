@@ -61,13 +61,6 @@
   </p>
 {% endblock %}
 
-{% block footer %}
-  <span class="muted">v{{ version }}</span>
-  {% if show_privacy_policy %}
-    <span>| <a href="/static/privacy_policy.html">Privacy Policy</a></span>
-  {% endif %}
-{% endblock %}
-
 {% block structured_data %}
   <script type="application/ld+json">{{ webapplication_jsonld(request) | safe }}</script>
 {% endblock %}

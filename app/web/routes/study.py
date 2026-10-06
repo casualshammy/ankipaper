@@ -12,7 +12,6 @@ from fastapi import APIRouter, Body, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from app import __version__
 from app.domain.scheduler import (
     CardIntervals,
     DeckStats,
@@ -60,9 +59,7 @@ async def home(
     if account is None:
         return templates.TemplateResponse(
             request,
-            "landing.html",
-            {"version": __version__},
-        )
+            "landing.html")
 
     logger = _common_logger.getChild(account.username)
     manager = account.manager
@@ -91,7 +88,6 @@ async def home(
                 request,
                 "home_loading.html",
                 {
-                    "version": __version__,
                     "account": account,
                     "refresh_interval_seconds": ceil(max_task_time_sec),
                 })
@@ -111,7 +107,6 @@ async def home(
         request,
         "home.html",
         {
-            "version": __version__,
             "account": account,
             "decks": decks,
             "has_collection": has_collection,
@@ -221,7 +216,6 @@ async def study_get(
         request,
         "study_front.html",
         {
-            "version": __version__,
             "account": account,
             "deck_id": deck_id,
             "is_filtered": is_filtered,
@@ -291,7 +285,6 @@ async def study_post(
             request,
             "study_back.html",
             {
-                "version": __version__,
                 "account": account,
                 "deck_id": deck_id,
                 "is_filtered": is_filtered,
@@ -381,7 +374,6 @@ async def delete_note_get(
         request,
         "delete_card_confirm.html",
         {
-            "version": __version__,
             "account": account,
             "deck_id": deck_id,
             "card": view,
@@ -519,7 +511,6 @@ async def _session_done(
         request,
         "study_done.html",
         {
-            "version": __version__,
             "account": account,
             "deck_id": deck_id,
             "is_filtered": is_filtered,

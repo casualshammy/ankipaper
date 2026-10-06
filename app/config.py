@@ -63,6 +63,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    contacts_email: str = Field(
+            default="",
+            description=(
+                "Email address for contacting the site administrator. "
+                "Shown in the footer if provided."
+            ),
+        )
+
     debug_headers: bool = Field(
         default=False,
         description=(

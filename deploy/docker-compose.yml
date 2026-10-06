@@ -23,7 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: ankipaper-redis
+    container_name: redis
     restart: unless-stopped
     volumes:
       - ./.redis:/data

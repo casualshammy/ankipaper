@@ -12,7 +12,6 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import __version__
 from app.config import Settings
 from app.storage.account import Account
 from app.sync.client import (
@@ -114,7 +113,6 @@ async def sync_wait_get(
             request,
             "sync_wait.html",
             {
-                "version": __version__,
                 "phase": "",
                 "progress_unit": state.progress_unit,
                 "percent": 0,
@@ -130,7 +128,6 @@ async def sync_wait_get(
             request,
             "sync_wait.html",
             {
-                "version": __version__,
                 "phase": None,
                 "progress_unit": state.progress_unit,
                 "percent": 100,
@@ -147,7 +144,6 @@ async def sync_wait_get(
         request,
         "sync_wait.html",
         {
-            "version": __version__,
             "phase": state.phase or "collection",
             "progress_unit": state.progress_unit,
             "percent": state.percent,

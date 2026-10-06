@@ -77,8 +77,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ``csrf_token(request)`` callable — see ``app/web/csrf.py``.
     from app.web.csrf import csrf_token as csrf_token_global
 
+    app.state.templates.env.globals["version"] = __version__
     app.state.templates.env.globals["csrf_token"] = csrf_token_global
     app.state.templates.env.globals["show_privacy_policy"] = settings.show_privacy_policy
+    app.state.templates.env.globals["contacts_email"] = settings.contacts_email
 
     from app.web.seo import canonical_url, og_image_url, webapplication_jsonld
 

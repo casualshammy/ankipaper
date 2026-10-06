@@ -14,6 +14,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
     "jinja2>=3.1",
+    "pillow>=12.3",
     "python-multipart>=0.0.9",
     "itsdangerous>=2.1",
     "pydantic-settings>=2.2",

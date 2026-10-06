@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app import __version__
 from app.storage.account import get_account_store
 from app.sync.auth import AuthError, login
 from app.web.csrf import require_csrf
@@ -37,7 +36,6 @@ async def login_get(
         request,
         "login.html",
         {
-            "version": __version__,
             "account": None,
             "reason": reason,
             "error": None,
@@ -71,7 +69,6 @@ async def login_post(
             request,
             "login.html",
             {
-                "version": __version__,
                 "account": None,
                 "reason": None,
                 "error": "Service temporarily unavailable. Please try again later.",
@@ -84,7 +81,6 @@ async def login_post(
             request,
             "login.html",
             {
-                "version": __version__,
                 "account": None,
                 "reason": None,
                 "error": error,
@@ -99,7 +95,6 @@ async def login_post(
             request,
             "login.html",
             {
-                "version": __version__,
                 "account": None,
                 "reason": None,
                 "error": "New account registration is temporarily unavailable because the data storage limit has been reached.",
@@ -115,7 +110,6 @@ async def login_post(
             request,
             "login.html",
             {
-                "version": __version__,
                 "account": None,
                 "reason": None,
                 "error": str(exc),

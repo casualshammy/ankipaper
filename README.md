@@ -85,6 +85,7 @@ Settings are read from environment variables or `.env` using the `ANKIPAPER_` pr
 | `ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY` | `false` | Set to `true` behind a TLS-terminating reverse proxy (nginx, cloudflared, etc.). Enables `Secure` cookies, X-Forwarded-For IP trust, and proxy-aware canonical URLs. The legacy name `ANKIPAPER_BEHIND_PROXY` still works but is deprecated. |
 | `ANKIPAPER_COOKIE_INSECURE_HOSTS` | `""` | Comma-separated list of `Host` header values (exact match or `*.suffix` wildcard) for which the session cookie is set without `Secure`. Use this when the same process serves both Cloudflare-fronted HTTPS and a direct LAN access over plain HTTP. |
 | `ANKIPAPER_SHOW_PRIVACY_POLICY` | `false` | Adds a link to `/static/privacy_policy.html` in login and deck-list footers. |
+| `ANKIPAPER_CONTACTS_EMAIL` | `""` | Email address shown as a "Contact Us" link in the page footer. Empty hides the link. |
 | `ANKIPAPER_DEBUG_HEADERS` | `false` | Logs all incoming request headers for proxy debugging. Keep disabled in production because cookies and authorization headers may be logged. |
 | `ANKIPAPER_REDIS_URL` | `redis://localhost:6379/0` | Redis URL for login and sync rate limiting. In Docker Compose use `redis://redis:6379/0`. |
 | `ANKIPAPER_LOGIN_IP_MAX_ATTEMPTS` | `5` | Maximum login attempts per IP in the IP window. |
