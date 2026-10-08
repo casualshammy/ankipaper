@@ -215,7 +215,7 @@ async def is_sync_required_or_throw(
         raise AuthExpiredError()
 
     auth = make_auth(host_key, endpoint)
-    status = await asyncio.wait_for(account.manager.run(lambda c: c.sync_status(auth)), timeout=3.0) 
+    status = await asyncio.wait_for(account.run(lambda c: c.sync_status(auth)), timeout=3.0) 
     return bool(status.required), status.new_endpoint or None
 
 

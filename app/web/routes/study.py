@@ -62,9 +62,8 @@ async def home(
             "landing.html")
 
     logger = _common_logger.getChild(account.username)
-    manager = account.manager
-    has_collection = manager.has_collection()
-    collection_was_open = manager.is_open() if has_collection else False
+    has_collection = account.deck_collection_file_exists()
+    collection_was_open = account.is_open() if has_collection else False
     decks: list[DeckStats] = []
     error: str | None = None
 
@@ -74,7 +73,7 @@ async def home(
     if has_collection:
         inflight = _deck_stats_inflight.get(account.id)
         if inflight is None or inflight.done():
-            inflight = asyncio.create_task(manager.run(list_deck_stats))
+            inflight = asyncio.create_task(account.run(list_deck_stats))
             _deck_stats_inflight[account.id] = inflight
 
         max_task_time_sec = 2
@@ -133,7 +132,7 @@ async def home(
         t_sync_ms,
         t_render_ms,
         collection_was_open,
-        manager.is_open(),
+        account.is_open(),
         len(decks),
         is_sync_required,
     )
@@ -154,7 +153,7 @@ async def deck_rebuild_post(
     logger = _common_logger.getChild(account.username)
 
     try:
-        count = await account.manager.run(rebuild_filtered_deck, deck_id)
+        count = await account.run(rebuild_filtered_deck, deck_id)
     except Exception as exc:
         logger.warning("rebuild_filtered_deck failed: deck_id=%s err=%s", deck_id, exc)
         return RedirectResponse(
@@ -178,7 +177,7 @@ async def deck_empty_post(
     logger = _common_logger.getChild(account.username)
 
     try:
-        count = await account.manager.run(empty_filtered_deck, deck_id)
+        count = await account.run(empty_filtered_deck, deck_id)
     except Exception as exc:
         logger.warning("empty_filtered_deck failed: deck_id=%s err=%s", deck_id, exc)
         return RedirectResponse(f"/?empty_error={exc}", status_code=303)
@@ -199,18 +198,17 @@ async def study_get(
         return RedirectResponse("/login", status_code=303)
 
     templates: Jinja2Templates = request.app.state.templates
-    manager = account.manager
 
-    view = await manager.run(get_next_card, deck_id)
+    view = await account.run(get_next_card, deck_id)
     if view is None:
         return await _session_done(request, account, deck_id)
 
     logger = _common_logger.getChild(account.username)
 
-    breakdown = await manager.run(get_deck_due_breakdown, deck_id)
-    is_filtered = await manager.run(_deck_is_filtered, deck_id)
-    has_cards = bool(await manager.run(get_deck_card_count, deck_id))
-    undo = await manager.run(get_undo_status)
+    breakdown = await account.run(get_deck_due_breakdown, deck_id)
+    is_filtered = await account.run(_deck_is_filtered, deck_id)
+    has_cards = bool(await account.run(get_deck_card_count, deck_id))
+    undo = await account.run(get_undo_status)
     is_sync_required = await _is_sync_required(logger, account)
     return templates.TemplateResponse(
         request,
@@ -253,7 +251,6 @@ async def study_post(
         return RedirectResponse("/login", status_code=303)
 
     templates: Jinja2Templates = request.app.state.templates
-    manager = account.manager
 
     if not card_id:
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
@@ -272,14 +269,14 @@ async def study_post(
             good=good_interval or "—",
             easy=easy_interval or "—",
         )
-        view = await manager.run(
+        view = await account.run(
             get_card_view, card_id_int, card_type or "new", intervals
         )
         if view is None:
             return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
-        breakdown = await manager.run(get_deck_due_breakdown, deck_id)
-        is_filtered = await manager.run(_deck_is_filtered, deck_id)
+        breakdown = await account.run(get_deck_due_breakdown, deck_id)
+        is_filtered = await account.run(_deck_is_filtered, deck_id)
         is_sync_required = await _is_sync_required(logger, account)
         return templates.TemplateResponse(
             request,
@@ -303,7 +300,7 @@ async def study_post(
         except ValueError:
             return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
-        outcome = await manager.run(answer_card, card_id_int, rating, deck_id=deck_id)
+        outcome = await account.run(answer_card, card_id_int, rating, deck_id=deck_id)
         if outcome.stale:
             logger.info(
                 "study_post: stale answer card_id=%s deck_id=%s rating=%s; "
@@ -331,7 +328,7 @@ async def undo_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    await account.manager.run(undo_last_op)
+    await account.run(undo_last_op)
     return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
 
@@ -357,12 +354,12 @@ async def delete_note_get(
         err_msg = f"Card id '{card_id_truncated}' is not a valid number"
         return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
 
-    view = await account.manager.run(get_card_view, cid, "new", None)
+    view = await account.run(get_card_view, cid, "new", None)
     if view is None:
         err_msg = f"Card '{cid}' does not exist"
         return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
 
-    true_deck = await account.manager.run(card_deck_matches_or_descends, view.deck_id, deck_id)
+    true_deck = await account.run(card_deck_matches_or_descends, view.deck_id, deck_id)
     if (not true_deck):
         err = f"delete_note_get: invalid deck id '{deck_id}', card's deck id: '{view.deck_id}'"
         logger.warning(err)
@@ -397,7 +394,7 @@ async def delete_note_post(
 
     try:
         cid = int(card_id)
-        await account.manager.run(delete_note_by_card, deck_id, cid)
+        await account.run(delete_note_by_card, deck_id, cid)
         logger.info("delete_note_post: card_id=%s deck_id=%s deleted", cid, deck_id)
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
     except ValueError as exc:
@@ -438,7 +435,7 @@ async def flag_post(
         return Response(status_code=400, content = "invalid flag")
 
     try:
-        await account.manager.run(set_card_flag, card_id, flag)
+        await account.run(set_card_flag, card_id, flag)
         return Response(status_code=204)
     except ValueError as exc:
         exc_str = str(exc)
@@ -470,7 +467,7 @@ async def mark_post(
         return Response(status_code=400, content = "invalid marked")
     
     try:
-        await account.manager.run(set_card_marked, card_id, marked)
+        await account.run(set_card_marked, card_id, marked)
         return Response(status_code=204)
     except ValueError as exc:
         exc_str= str(exc)
@@ -503,9 +500,9 @@ async def _session_done(
     logger = _common_logger.getChild(account.username)
 
     templates: Jinja2Templates = request.app.state.templates
-    is_filtered = await account.manager.run(_deck_is_filtered, deck_id)
-    has_cards = bool(await account.manager.run(get_deck_card_count, deck_id))
-    undo = await account.manager.run(get_undo_status)
+    is_filtered = await account.run(_deck_is_filtered, deck_id)
+    has_cards = bool(await account.run(get_deck_card_count, deck_id))
+    undo = await account.run(get_undo_status)
     is_sync_required = await _is_sync_required(logger, account)
     return templates.TemplateResponse(
         request,

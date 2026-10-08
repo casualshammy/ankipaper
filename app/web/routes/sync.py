@@ -300,11 +300,10 @@ async def _run_full_sync_background(
     poller = CollectionProgressPoller(account, state)
     poller.start()
     try:
-        manager = account.manager
         if is_upload:
-            await manager.run(full_upload, host_key, endpoint)
+            await account.run(full_upload, host_key, endpoint)
         else:
-            await manager.run(full_download, host_key, endpoint)
+            await account.run(full_download, host_key, endpoint)
     except AuthExpiredError:
         _fail_sync(state, error="auth_expired", account=account)
         return
@@ -335,11 +334,10 @@ def _count_cards(col: Any) -> int:
 async def _collection_is_empty(account: Account) -> bool:
     """True if the local collection of the account contains no cards."""
 
-    manager = account.manager
-    if not manager.has_collection():
+    if not account.deck_collection_file_exists():
         return True
     try:
-        count = await manager.run(_count_cards)
+        count = await account.run(_count_cards)
     except Exception:
         logger.exception("Failed to count cards in collection")
         return True
@@ -410,9 +408,8 @@ async def _run_collection_sync_background(
     poller = CollectionProgressPoller(account, state)
     poller.start()
     try:
-        manager = account.manager
         try:
-            result = await manager.run(try_sync, host_key)
+            result = await account.run(try_sync, host_key)
         except Exception as exc:
             logger.exception("Background collection sync raised")
             _fail_sync(state, error=str(exc), account=account)
@@ -442,7 +439,7 @@ async def _run_collection_sync_background(
         if is_empty:
             logger.info("Local collection empty, falling back to full download")
             try:
-                full = await manager.run(full_download, host_key, result.new_endpoint)
+                full = await account.run(full_download, host_key, result.new_endpoint)
             except AuthExpiredError:
                 _fail_sync(state, error="auth_expired", account=account)
                 return
@@ -492,7 +489,7 @@ def _start_media_sync_background(
             account=account,
             host_key=host_key,
             endpoint=endpoint,
-            data_dir=account.data_dir,
+            data_dir=account.account_path,
             last_usn_path=account.last_usn_path(),
             settings=settings,
         )

@@ -29,12 +29,12 @@ class AnkiPaperCollector(Collector):
         metric_accounts_total.add_metric([], store.total_accounts_on_disk())
         yield metric_accounts_total
 
-        managers = store.iter_managers()
+        accounts = store.list_loaded_accounts()
         metric_collections_open = GaugeMetricFamily(
             "ankipaper_collections_open",
             "Number of accounts with a currently open collection.",
         )
-        open_count = sum(1 for m in managers if m.is_open())
+        open_count = sum(1 for acc in accounts if acc.is_open())
         metric_collections_open.add_metric([], open_count)
         yield metric_collections_open
 

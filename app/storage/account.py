@@ -14,15 +14,19 @@ and is used for display in the UI.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
-from dataclasses import dataclass, field
+import time
+from collections.abc import Callable
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
+from typing import Any, TypeVar
+
+import anki.collection
 
 from app.storage import secrets
-from app.storage.collection import CollectionManager
 from app.sync.state import SyncState
 
 logger = logging.getLogger(__name__)
@@ -33,6 +37,9 @@ _LAST_USN_FILE = "media.last_usn"
 
 _DATA_ROOT = Path("/data")
 _ACCOUNTS_DIR = _DATA_ROOT / "accounts"
+_MEDIA_DIR_NAME = "collection.media"
+
+T = TypeVar("T")
 
 
 def _dir_size_bytes(root: Path) -> int:
@@ -54,7 +61,7 @@ def _dir_size_bytes(root: Path) -> int:
     return total
 
 
-def sanitize_account_id(username: str) -> str:
+def sanitize_account_id_or_throw(username: str) -> str:
     """Returns a safe account directory name from an AnkiWeb username.
 
     The username is lowercased so that ``Alice`` and ``alice`` map to the
@@ -80,59 +87,176 @@ def sanitize_account_id(username: str) -> str:
         raise ValueError("Username too long")
     return cleaned
 
+def sanitize_account_id(username: str) -> str | None:
+    """
+    Returns a safe account directory name from an AnkiWeb username.
 
-@dataclass(slots=True)
-class Account:
-    """A single AnkiWeb account: its on-disk data and in-memory state.
+    Returns ``None`` if the username is invalid.
+    """
 
+    try:
+        return sanitize_account_id_or_throw(username)
+    except ValueError:
+        return None
+
+
+class AccountBase:
+    """A single AnkiWeb account: its on-disk data.
+    
     Attributes:
-        id: safe directory name (see :func:`sanitize_account_id`).
+        id: safe directory name.
         username: original AnkiWeb username (for display).
-        data_dir: path to the account directory.
-        manager: per-account ``CollectionManager``.
-        sync_state: per-account media-sync state.
+        account_path: path to the account directory.
     """
 
     id: str
     username: str
-    data_dir: Path
-    manager: CollectionManager = field(init=False)
-    sync_state: SyncState = field(init=False)
+    account_path: Path
 
-    def __post_init__(self) -> None:
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.manager = CollectionManager(self.username, self.data_dir / _COLLECTION_FILE)
-        self.sync_state = SyncState()
+    def __init__(self, username: str) -> None:
+        self.id = sanitize_account_id_or_throw(username)
+        self.username = username
+        self.account_path = _ACCOUNTS_DIR / self.id
+        self.account_path.mkdir(parents=True, exist_ok=True)
 
     def host_key(self) -> str | None:
         """Returns the decrypted hostKey, or ``None``."""
 
-        return secrets.load_secret_in(self.data_dir, _HOSTKEY_FILE)
-
+        return secrets.load_secret_in(self.account_path, _HOSTKEY_FILE)
+    
     def save_host_key(self, host_key: str) -> None:
         """Encrypts and saves the hostKey (mode 0600)."""
 
-        secrets.save_secret_in(self.data_dir, _HOSTKEY_FILE, host_key)
+        secrets.save_secret_in(self.account_path, _HOSTKEY_FILE, host_key)
 
     def delete_host_key(self) -> None:
         """Deletes the hostKey if it exists."""
 
-        secrets.delete_secret_in(self.data_dir, _HOSTKEY_FILE)
-
-    def has_host_key(self) -> bool:
-        """Whether a hostKey file exists on disk (no decryption)."""
-
-        return (self.data_dir / _HOSTKEY_FILE).exists()
+        secrets.delete_secret_in(self.account_path, _HOSTKEY_FILE)
 
     def last_usn_path(self) -> Path:
         """Path to the ``media.last_usn`` file."""
 
-        return self.data_dir / _LAST_USN_FILE
+        return self.account_path / _LAST_USN_FILE
 
     def media_dir(self) -> Path:
-        """Path to the media directory (``collection.media/``)."""
+        """Path to the media directory"""
 
-        return self.manager.media_dir()
+        return self.account_path / _MEDIA_DIR_NAME
+
+    def get_deck_collection_file_path(self) -> Path:
+        """Path to the collection file on disk."""
+
+        return self.account_path / _COLLECTION_FILE
+
+    def deck_collection_file_exists(self) -> bool:
+        """True if the collection file exists on disk."""
+
+        return self.get_deck_collection_file_path().exists()
+
+class Account(AccountBase):
+    _logger: logging.Logger
+    _lock: asyncio.Lock
+    _collection: anki.collection.Collection | None = None
+    _last_access: float = 0.0
+    
+    sync_state: SyncState
+
+    def __init__(
+        self, 
+        username: str) -> None:
+        """Creates an account instance.
+
+        Args:
+            username: name of the account this collection belongs to (raw, as entered by the user).
+        """
+        super().__init__(username)
+
+        self.sync_state = SyncState()
+        self._logger = logging.getLogger(f"{__name__} [{self.id}]")
+        self._lock = asyncio.Lock()
+
+    def is_open(self) -> bool:
+        """True if the underlying Anki collection is currently open in memory."""
+
+        return self._collection is not None
+
+    async def run(
+        self,
+        fn: Callable[..., T],
+        *args: Any,
+        **kwargs: Any,
+    ) -> T:
+        """Runs the synchronous function ``fn`` with the collection open.
+
+        Opens the collection if needed, guarantees serial access via
+        ``asyncio.Lock``, and runs the call in a thread pool.
+
+        Args:
+            fn: function ``(collection, *args, **kwargs) -> T``.
+            *args: positional arguments for ``fn``.
+            **kwargs: keyword arguments for ``fn``.
+        """
+
+        async with self._lock:
+            self._ensure_collection_open()
+            self._last_access = time.monotonic()
+            assert self._collection is not None
+            return await asyncio.to_thread(fn, self._collection, *args, **kwargs)
+
+    async def peek(
+        self,
+        fn: Callable[..., T],
+        *args: Any,
+        **kwargs: Any,
+    ) -> T | None:
+        """Runs ``fn`` against the collection without taking the run-lock.
+
+        Returns ``None`` if the collection is closed so the caller can simply skip the tick.
+        Does NOT bump ``_last_access`` — the collection is still
+        considered idle while only ``peek`` calls come in.
+        """
+
+        if self._collection is None:
+            return None
+        return await asyncio.to_thread(fn, self._collection, *args, **kwargs)
+
+    async def close_collection(self) -> None:
+        """Closes the collection if it is open."""
+
+        async with self._lock:
+            if self._collection is not None:
+                try:
+                    await asyncio.to_thread(self._collection.close)
+                    self._logger.info("Collection closed successfully")
+                except Exception:
+                    self._logger.exception("Failed to close collection")
+                self._collection = None
+                self._last_access = 0.0
+
+    def is_idle(self, threshold_seconds: float) -> bool:
+        """True if the collection is open and has not been accessed
+        within the given number of seconds.
+
+        A closed collection is never idle (there is nothing to close).
+        """
+
+        if self._collection is None:
+            return False
+        return (time.monotonic() - self._last_access) >= threshold_seconds
+
+    def _ensure_collection_open(self) -> None:
+        """Opens the collection if it is not already open."""
+
+        if self._collection is not None:
+            return
+
+        path = self.get_deck_collection_file_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._logger.info("Opening collection at %s...", path)
+        self._collection = anki.collection.Collection(str(path))
+        self._logger.info("Collection opened successfully")
 
 
 class AccountStore:
@@ -152,11 +276,11 @@ class AccountStore:
     def accounts_dir(self) -> Path:
         return self._accounts_dir
 
-    def _safe_account_dir(self, username_or_id: str) -> Path | None:
+    def _safe_account_dir(self, username: str) -> Path | None:
         """Returns the account dir for a sanitised id, or ``None`` if invalid."""
 
         try:
-            return _ACCOUNTS_DIR / sanitize_account_id(username_or_id)
+            return _ACCOUNTS_DIR / sanitize_account_id_or_throw(username)
         except ValueError:
             return None
 
@@ -183,52 +307,63 @@ class AccountStore:
     def get_or_create(self, username: str) -> Account:
         """Returns the existing account or creates a new one from the username."""
 
+        account_id = sanitize_account_id_or_throw(username)
+        return self._cache_account(account_id, lambda: Account(username))
+
+    def get(self, username: str) -> Account | None:
+        """Returns the already-loaded account by ``username``, or ``None``."""
+
         account_id = sanitize_account_id(username)
-        return self._cache_account(
-            Account(
-                id=account_id,
-                username=username,
-                data_dir=_ACCOUNTS_DIR / account_id,
-            )
-        )
-
-    def get(self, account_id: str) -> Account | None:
-        """Returns the already-loaded account by ``account_id``, or ``None``."""
-
+        if account_id is None:
+            return None
         with self._lock:
             return self._accounts.get(account_id)
 
-    def iter_managers(self) -> list[CollectionManager]:
-        """Snapshot of all currently-loaded managers (taken under lock)."""
+    def list_loaded_accounts(self) -> list[Account]:
+        """Returns a snapshot of all currently-loaded accounts (taken under lock)."""
 
         with self._lock:
-            return [a.manager for a in self._accounts.values()]
+            return list(self._accounts.values())
+
+    def list_all_accounts_on_disk(self) -> list[AccountBase]:
+        """Returns a list of all accounts present on disk."""
+
+        accounts = []
+        for path in _ACCOUNTS_DIR.iterdir():
+            if path.is_dir():
+                account_id = path.name
+                accounts.append(AccountBase(account_id))
+
+        return accounts
 
     def total_accounts_on_disk(self) -> int:
         """Returns the total number of account directories on disk."""
 
         return sum(1 for _ in _ACCOUNTS_DIR.iterdir() if _.is_dir())
 
-    def ensure(self, account_id: str) -> Account | None:
-        """Returns the account by id, loading it from disk if necessary.
+    def ensure(self, username: str) -> Account | None:
+        """Returns the account by username, loading it from disk if necessary.
 
         Args:
-            account_id: identifier (subdirectory name under ``accounts/``).
+            username: raw username of the account (as entered by the user).
 
         Returns:
-            ``Account``, or ``None`` if the id is invalid or no such
-            directory exists on disk.
+            ``Account``, or ``None`` if the username is invalid or no such directory exists on disk.
         """
 
-        # Without an on-disk directory there is no account to re-hydrate.
-        # We check this before constructing an ``Account`` so we don't end
-        # up with an in-memory object whose hostKey will never be loaded.
-        path = self._safe_account_dir(account_id)
+        account_id = sanitize_account_id(username)
+        if account_id is None:
+            return None
+        path = _ACCOUNTS_DIR / account_id
         if path is None or not path.is_dir():
             return None
-        return self._cache_account(Account(id=path.name, username=path.name, data_dir=path))
+        
+        return self._cache_account(account_id, lambda: Account(username)) 
 
-    def _cache_account(self, account: Account) -> Account:
+    def _cache_account(
+            self, 
+            account_id: str,
+            account_func: Callable[[], Account]) -> Account:
         """Returns the cached account, storing it on first access.
 
         Takes the registry lock, returns the existing entry if any, and
@@ -237,15 +372,17 @@ class AccountStore:
         """
 
         with self._lock:
-            existing = self._accounts.get(account.id)
+            existing = self._accounts.get(account_id)
             if existing is not None:
                 return existing
-            self._accounts[account.id] = account
+
+            account = account_func()
+            self._accounts[account_id] = account
             logger.info(
                 "Loaded account: id=%s username=%s dir=%s",
                 account.id,
                 account.username,
-                account.data_dir,
+                account.account_path,
             )
             return account
 

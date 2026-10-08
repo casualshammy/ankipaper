@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 import anki.collection
 
-from app.storage.collection import CollectionManager
-
 if TYPE_CHECKING:
     from app.storage.account import Account
     from app.sync.state import SyncState
@@ -30,10 +28,6 @@ def _apply_to_state(progress: Any, state: SyncState) -> None:
         state.progress_unit = "cards"
         state.progress_current = 1
         state.progress_total = 1
-
-
-def latest_progress(col: anki.collection.Collection) -> anki.collection.Progress:
-    return col.latest_progress()
 
 
 class CollectionProgressPoller:
@@ -76,14 +70,13 @@ class CollectionProgressPoller:
     async def _run(self) -> None:
         """Poll-until-cancelled loop. Swallows per-tick errors."""
 
-        manager: CollectionManager = self._account.manager
         while True:
             try:
                 await asyncio.sleep(self._poll_interval)
             except asyncio.CancelledError:
                 raise
             try:
-                progress = await manager.peek(latest_progress)
+                progress: anki.collection.Progress | None = await self._account.peek(lambda col: col.latest_progress())
             except Exception:
                 logger.debug("progress poll failed", exc_info=True)
                 continue
