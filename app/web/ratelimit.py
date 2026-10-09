@@ -175,7 +175,7 @@ class LoginRateLimiter:
             return _format_error(ip_b, label="IP address")
 
         if username:
-            user_key = f"{user_b.key_prefix}:{username.strip().lower()}"
+            user_key = f"{user_b.key_prefix}:{username}"
             user_count = await incr(
                 keys=[user_key],
                 args=[user_b.window_seconds * 1000],
@@ -211,7 +211,7 @@ class LoginRateLimiter:
         try:
             client = await _ensure_client()
             _, user_b = self._buckets()
-            user_key = f"{user_b.key_prefix}:{username.strip().lower()}"
+            user_key = f"{user_b.key_prefix}:{username}"
             await client.delete(user_key)
         except Exception as exc:
             logger.warning("Rate limiter reset failed: %s", exc)
