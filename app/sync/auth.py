@@ -62,23 +62,27 @@ def _temp_collection() -> Generator[anki.collection.Collection, None, None]:
             os.unlink(path)
 
 
-def login(username: str, password: str) -> str:
-    """Logs into AnkiWeb and returns the hostKey.
+def login(account_id: str, password: str) -> str:
+    """Logs into AnkiWeb using the sanitized account_id and returns the hostKey.
+
+    The caller is responsible for having normalized the input via
+    :func:`sanitize_account_id_or_throw` — AnkiWeb usernames are
+    case-insensitive, so the lowercased form is sent over the wire.
 
     Args:
-        username: AnkiWeb username.
+        account_id: sanitized AnkiWeb account id.
         password: AnkiWeb password.
 
     Raises:
         AuthError: on authentication or network error.
     """
 
-    if not username or not password:
+    if not account_id or not password:
         raise AuthError("Username and password are required")
 
     with _temp_collection() as col:
         try:
-            auth: SyncAuth = col.sync_login(username, password, DEFAULT_ENDPOINT)
+            auth: SyncAuth = col.sync_login(account_id, password, DEFAULT_ENDPOINT)
         except BackendError as exc:
             raise AuthError(_translate_backend_error(exc)) from exc
         except Exception as exc:

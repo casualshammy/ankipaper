@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.storage import get_account_store
 from app.sync.auth import AuthError, login
+from app.toolkit import sanitize_account_id_or_throw
 from app.web.csrf import require_csrf
 from app.web.deps import get_session
 from app.web.ratelimit import client_ip, get_login_rate_limiter
@@ -56,13 +57,28 @@ async def login_post(
     ip = client_ip(request)
     limiter = get_login_rate_limiter()
 
-    # Rate-limit check before forwarding credentials to AnkiWeb. We
-    # always charge the per-IP counter; the per-username counter only
-    # applies once a non-empty username is supplied. Redis is verified
-    # on every request — if it is unreachable we refuse the login
-    # rather than silently disabling brute-force protection.
+    # 1. Sanitize — the only point where raw user input is normalized into an account_id. 
+    # All subsequent steps work with account_id only.
     try:
-        error = await limiter.check(ip, username)
+        account_id = sanitize_account_id_or_throw(username)
+    except ValueError:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "account": None,
+                "reason": None,
+                "error": "Invalid username.",
+                "username": username,
+            },
+            status_code=401,
+        )
+
+    # 2. Rate-limit check on the normalized account_id. Redis is
+    # verified on every request - if it is unreachable we refuse the
+    # login rather than silently disabling brute-force protection.
+    try:
+        error = await limiter.check(ip, account_id)
     except RuntimeError as exc:
         logger.error("Login rate limiter unavailable: %s", exc)
         return templates.TemplateResponse(
@@ -89,8 +105,9 @@ async def login_post(
             status_code=429,
         )
 
+    # 3. Quota on data size.
     store = get_account_store()
-    if not store.can_create_account_on_disk(username, request.app.state.settings.data_max_bytes):
+    if not store.can_create_new_account_if_not_exists(account_id, request.app.state.settings.data_max_bytes):
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -103,8 +120,9 @@ async def login_post(
             status_code=401,
         )
 
+    # 4. Login to AnkiWeb.
     try:
-        host_key = login(username, password)
+        host_key = login(account_id, password)
     except AuthError as exc:
         return templates.TemplateResponse(
             request,
@@ -118,17 +136,12 @@ async def login_post(
             status_code=401,
         )
 
-    # Successful login — clear the counters so the user does not lock
-    # themselves out by signing in and out repeatedly. Best-effort.
-    await limiter.reset(ip, username)
+    # 5. Success - clear the counters so the user does not lock themselves out by signing in and out repeatedly.
+    await limiter.reset(ip, account_id)
 
-    account = store.get_or_create(username)
+    account = store.get_or_create(account_id)
     account.save_host_key(host_key)
-    logger.info(
-        "Login successful: account_id=%s username=%s",
-        account.id,
-        account.username,
-    )
+    logger.info(f"Login successful: account_id={account.id}")
 
     response = RedirectResponse("/", status_code=303)
     write_session(response, account.id, request)

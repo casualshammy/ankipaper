@@ -5,13 +5,13 @@ import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar, Final
+from typing import Any, Final, TypeVar
 
 import anki.collection
 
 from app.storage import secrets
 from app.sync.state import SyncState
-from app.toolkit import ACCOUNTS_DIR, sanitize_account_id_or_throw
+from app.toolkit import ACCOUNTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +26,17 @@ T = TypeVar("T")
 class AccountBase:
     """
     A single AnkiWeb account: its on-disk data.
-    
+
     Attributes:
         id: safe directory name.
-        username: original AnkiWeb username (for display).
         account_path: path to the account directory.
     """
 
     id: Final[str]
-    username: Final[str]
     account_path: Final[Path]
 
-    def __init__(self, username: str) -> None:
-        self.id = sanitize_account_id_or_throw(username)
-        self.username = username
+    def __init__(self, account_id: str) -> None:
+        self.id = account_id
         self.account_path = ACCOUNTS_DIR / self.id
         self.account_path.mkdir(parents=True, exist_ok=True)
 
@@ -90,15 +87,8 @@ class Account(AccountBase):
     
     sync_state: Final[SyncState]
 
-    def __init__(
-        self, 
-        username: str) -> None:
-        """Creates an account instance.
-
-        Args:
-            username: name of the account this collection belongs to (raw, as entered by the user).
-        """
-        super().__init__(username)
+    def __init__(self, account_id: str) -> None:
+        super().__init__(account_id)
 
         self.sync_state = SyncState()
         self._logger = logging.getLogger(f"{__name__} [{self.id}]")

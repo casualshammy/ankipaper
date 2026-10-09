@@ -25,10 +25,10 @@ def _resolve_account(session: Session, store: AccountStore) -> Account | None:
 
     if not session.is_authenticated or not session.account_id:
         return None
-    cached = store.get(session.account_id)
+    cached = store.get_loaded_or_none(session.account_id)
     if cached is not None:
         return cached
-    return store.ensure(session.account_id)
+    return store.try_load(session.account_id)
 
 
 def get_current_account(

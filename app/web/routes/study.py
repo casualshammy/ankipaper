@@ -61,7 +61,7 @@ async def home(
             request,
             "landing.html")
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
     has_collection = account.deck_collection_file_exists()
     collection_was_open = account.is_open() if has_collection else False
     decks: list[DeckStats] = []
@@ -150,7 +150,7 @@ async def deck_rebuild_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     try:
         count = await account.run(rebuild_filtered_deck, deck_id)
@@ -174,7 +174,7 @@ async def deck_empty_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     try:
         count = await account.run(empty_filtered_deck, deck_id)
@@ -203,7 +203,7 @@ async def study_get(
     if view is None:
         return await _session_done(request, account, deck_id)
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     breakdown = await account.run(get_deck_due_breakdown, deck_id)
     is_filtered = await account.run(_deck_is_filtered, deck_id)
@@ -260,7 +260,7 @@ async def study_post(
     except ValueError:
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     if reveal:
         intervals = CardIntervals(
@@ -344,7 +344,7 @@ async def delete_note_get(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     try:
         cid = int(card_id)
@@ -390,7 +390,7 @@ async def delete_note_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     try:
         cid = int(card_id)
@@ -422,7 +422,7 @@ async def flag_post(
     if account is None:
         return Response(status_code=401)
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     card_id = payload.get("card_id", "")
     flag = payload.get("flag", "")
@@ -457,7 +457,7 @@ async def mark_post(
     card_id = payload.get("card_id", "")
     marked = payload.get("marked", "")
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     if type(card_id) is not int:
         logger.warning("set-card-mark: invalid card_id=%s", str(card_id)[:100])
@@ -497,7 +497,7 @@ async def _session_done(
 ) -> HTMLResponse:
     """Renders the session-complete page."""
 
-    logger = _common_logger.getChild(account.username)
+    logger = _common_logger.getChild(account.id)
 
     templates: Jinja2Templates = request.app.state.templates
     is_filtered = await account.run(_deck_is_filtered, deck_id)

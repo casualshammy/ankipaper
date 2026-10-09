@@ -139,13 +139,13 @@ class LoginRateLimiter:
             ),
         )
 
-    async def check(self, ip: str, username: str) -> str | None:
+    async def check(self, ip: str, account_id: str) -> str | None:
         """Records an attempt. Returns ``None`` if allowed, error msg if blocked.
 
         Args:
             ip: client IP (already extracted via X-Forwarded-For when behind
                 a proxy).
-            username: AnkiWeb username from the form (may be empty).
+            account_id: sanitized account id from the form (may be empty).
 
         Returns:
             Human-readable error message if the attempt exceeds one of the
@@ -174,16 +174,16 @@ class LoginRateLimiter:
             )
             return _format_error(ip_b, label="IP address")
 
-        if username:
-            user_key = f"{user_b.key_prefix}:{username}"
+        if account_id:
+            user_key = f"{user_b.key_prefix}:{account_id}"
             user_count = await incr(
                 keys=[user_key],
                 args=[user_b.window_seconds * 1000],
             )
             if user_count > user_b.max_attempts:
                 logger.warning(
-                    "Login rate limit hit: user=%s count=%d max=%d",
-                    username,
+                    "Login rate limit hit: account_id=%s count=%d max=%d",
+                    account_id,
                     user_count,
                     user_b.max_attempts,
                 )
@@ -191,10 +191,10 @@ class LoginRateLimiter:
 
         return None
 
-    async def reset(self, ip: str, username: str) -> None:
+    async def reset(self, ip: str, account_id: str) -> None:
         """Best-effort counter clear after a successful login.
 
-        Only the per-user counter for the username that just signed in is
+        Only the per-user counter for the account_id that just signed in is
         cleared. The per-IP counter is left alone — it expires naturally
         within ``login_ip_window_seconds`` and clearing it would let an
         attacker who owns a legitimate account use it as a "free reset"
@@ -206,12 +206,12 @@ class LoginRateLimiter:
         hiccup to log the user back out.
         """
 
-        if not username:
+        if not account_id:
             return
         try:
             client = await _ensure_client()
             _, user_b = self._buckets()
-            user_key = f"{user_b.key_prefix}:{username}"
+            user_key = f"{user_b.key_prefix}:{account_id}"
             await client.delete(user_key)
         except Exception as exc:
             logger.warning("Rate limiter reset failed: %s", exc)
