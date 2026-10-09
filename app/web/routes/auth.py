@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.storage.account import get_account_store
+from app.storage import get_account_store
 from app.sync.auth import AuthError, login
 from app.web.csrf import require_csrf
 from app.web.deps import get_session

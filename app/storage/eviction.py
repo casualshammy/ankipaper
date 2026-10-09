@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app.storage.account import AccountStore
+from app.storage import AccountStore
 
 logger = logging.getLogger(__name__)
 

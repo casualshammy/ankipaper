@@ -7,7 +7,7 @@ import logging
 from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.registry import Collector
 
-from app.storage.account import get_account_store
+from app.storage import get_account_store
 
 logger = logging.getLogger(__name__)
 

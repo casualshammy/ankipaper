@@ -2,9 +2,11 @@
 
 from app.storage.account import (
     Account,
+    AccountBase,
+)
+from app.storage.account_store import (
     AccountStore,
     get_account_store,
-    sanitize_account_id_or_throw,
 )
 from app.storage.secrets import (
     delete_secret_in,
@@ -14,10 +16,10 @@ from app.storage.secrets import (
 
 __all__ = [
     "Account",
+    "AccountBase",
     "AccountStore",
     "delete_secret_in",
     "get_account_store",
     "load_secret_in",
-    "sanitize_account_id_or_throw",
     "save_secret_in",
 ]

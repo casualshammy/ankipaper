@@ -16,7 +16,7 @@ from prometheus_client import REGISTRY
 from app import __version__
 from app.config import Settings, get_settings
 from app.metrics.collectors import AnkiPaperCollector
-from app.storage.account import get_account_store
+from app.storage import get_account_store
 from app.web.middlewares import AccessLogMiddleware, MetricsMiddleware
 
 logging.basicConfig(

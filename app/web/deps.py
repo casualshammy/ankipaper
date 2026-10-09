@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request, status
 
-from app.storage.account import Account, AccountStore, get_account_store
+from app.storage import Account, AccountStore, get_account_store
 from app.web.session import Session, read_session
 
 
