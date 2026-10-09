@@ -61,7 +61,7 @@ class AccountStore:
       """
 
       path = ACCOUNTS_DIR / account_id
-      if path is None or not path.is_dir():
+      if not path.is_dir():
         return None
 
       return self._cache_account(account_id, lambda: Account(account_id))
@@ -71,17 +71,6 @@ class AccountStore:
 
         with self._lock:
           return list(self._accounts.values())
-
-    def list_all_accounts_on_disk(self) -> list[AccountBase]:
-        """Returns a list of all accounts present on disk."""
-
-        accounts = []
-        for path in ACCOUNTS_DIR.iterdir():
-          if path.is_dir():
-            account_id = path.name
-            accounts.append(AccountBase(account_id))
-
-        return accounts
 
     def total_accounts_on_disk(self) -> int:
         """Returns the total number of account directories on disk."""

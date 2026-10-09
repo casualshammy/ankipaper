@@ -29,15 +29,3 @@ def sanitize_account_id_or_throw(username: str) -> str:
     raise ValueError("Username too long")
   
   return cleaned
-
-def sanitize_account_id(username: str) -> str | None:
-  """
-  Returns a safe account directory name from an AnkiWeb username.
-
-  Returns ``None`` if the username is invalid.
-  """
-
-  try:
-    return sanitize_account_id_or_throw(username)
-  except ValueError:
-    return None
