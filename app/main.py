@@ -82,10 +82,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates.env.globals["show_privacy_policy"] = settings.show_privacy_policy
     app.state.templates.env.globals["contacts_email"] = settings.contacts_email
 
+    from app.toolkit import ANKIPAPER_DESCRIPTION, ANKIPAPER_NAME
     from app.web.seo import canonical_url, og_image_url, webapplication_jsonld
 
-    app.state.templates.env.globals["brand_name"] = settings.brand_name
-    app.state.templates.env.globals["default_description"] = settings.meta_description
+    app.state.templates.env.globals["brand_name"] = ANKIPAPER_NAME
+    app.state.templates.env.globals["default_description"] = ANKIPAPER_DESCRIPTION
     app.state.templates.env.globals["canonical_url"] = canonical_url
     app.state.templates.env.globals["og_image_url"] = og_image_url
     app.state.templates.env.globals["webapplication_jsonld"] = webapplication_jsonld

@@ -73,15 +73,15 @@ def _secure_cookie(request: Request) -> bool:
     LAN access over plain HTTP from the same process that serves
     Cloudflare-fronted users).
     """
-
-    if not get_settings().behind_proxy:
+    settings = get_settings()
+    if not settings.trusted_upstream_https_proxy:
         return False
 
     host = (request.headers.get("host") or "").split(":", 1)[0].lower()
     if not host:
         return True
 
-    for pat in get_settings().cookie_insecure_hosts:
+    for pat in settings.cookie_insecure_hosts:
         pat = pat.lower()
         if pat.startswith("*."):
             if host.endswith(pat[1:]):

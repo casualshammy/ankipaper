@@ -530,7 +530,7 @@ async def _run_media_sync_background(
         state.skipped_existing = skipped_existing
 
     try:
-        result = await asyncio.to_thread(
+        await asyncio.to_thread(
             sync_media_direct,
             host_key=host_key,
             endpoint=endpoint,
@@ -538,9 +538,7 @@ async def _run_media_sync_background(
             last_usn_path=last_usn_path,
             progress_callback=_cb,
             max_file_bytes=settings.media_max_file_bytes,
-            max_collection_bytes=settings.media_max_collection_bytes,
         )
-        state.media_collection_too_large = result.collection_too_large
         state.status = "done"
         state.phase = None
         state.finished_at = time.time()

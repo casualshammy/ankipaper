@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import os
-import warnings
 from functools import lru_cache
 from typing import Annotated, Any
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -27,18 +25,12 @@ class Settings(BaseSettings):
         description="Cookie session lifetime in days.",
     )
 
-    behind_proxy: bool = Field(
+    trusted_upstream_https_proxy: bool = Field(
         default=False,
-        validation_alias=AliasChoices(
-            "ankipaper_trusted_upstream_https_proxy",
-            "ankipaper_behind_proxy",
-        ),
         description=(
             "True if the application runs behind a trusted upstream proxy "
             "that terminates TLS. Enables Secure cookies, X-Forwarded-For IP trust, "
-            "and proxy-aware canonical URLs. Prefers env var "
-            "ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY; "
-            "ANKIPAPER_BEHIND_PROXY is the legacy name and is deprecated."
+            "and proxy-aware canonical URLs."
         ),
     )
 
@@ -57,27 +49,17 @@ class Settings(BaseSettings):
     show_privacy_policy: bool = Field(
         default=False,
         description=(
-            "If true, the login and deck-list footers show a link to "
+            "If true, footers show a link to "
             "/static/privacy_policy.html. Off by default so self-hosted "
             "deployments stay clean; enable on public deployments."
         ),
     )
 
     contacts_email: str = Field(
-            default="",
-            description=(
-                "Email address for contacting the site administrator. "
-                "Shown in the footer if provided."
-            ),
-        )
-
-    debug_headers: bool = Field(
-        default=False,
+        default="",
         description=(
-            "If true, the access-log middleware dumps every incoming request "
-            "header. Useful when diagnosing client-IP / proxy-header issues. "
-            "Off in production — it logs the full Cookie header and any "
-            "Authorization values."
+            "Email address for contacting the site administrator. "
+            "Shown in the footer if provided."
         ),
     )
 
@@ -138,15 +120,6 @@ class Settings(BaseSettings):
             "than this are skipped during media-sync (with a warning)."
         ),
     )
-    media_max_collection_bytes: int = Field(
-        default=200 * 1024 * 1024,
-        ge=1,
-        description=(
-            "Maximum total size of the user's collection.media/ directory "
-            "in bytes. When the existing directory already exceeds this "
-            "limit, no new media files are written to disk during sync."
-        ),
-    )
 
     public_url: str = Field(
         default="",
@@ -154,23 +127,6 @@ class Settings(BaseSettings):
             "Public origin used in canonical, Open Graph and sitemap URLs "
             "(for example, https://ankipaper.study). Empty -> the URL is "
             "derived from the incoming request."
-        ),
-    )
-
-    brand_name: str = Field(
-        default="AnkiPaper",
-        description="Product name surfaced in OG/site_name and brand alt text.",
-    )
-
-    meta_description: str = Field(
-        default=(
-            "AnkiPaper is a free web app that lets you review your Anki "
-            "flashcards in a Kindle or e-ink browser. Sign in with your "
-            "AnkiWeb account — no signup, no install, no tracking."
-        ),
-        description=(
-            "Default meta description and OG/Twitter description used on "
-            "the landing page."
         ),
     )
 
@@ -182,22 +138,6 @@ class Settings(BaseSettings):
         if not isinstance(value, str):
             return value
         return [part.strip() for part in value.split(",") if part.strip()]
-
-    @model_validator(mode="after")
-    def _warn_deprecated_behind_proxy(self) -> Settings:
-        """Warns when only the legacy ANKIPAPER_BEHIND_PROXY env var is set."""
-
-        if (
-            "ANKIPAPER_BEHIND_PROXY" in os.environ
-            and "ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY" not in os.environ
-        ):
-            warnings.warn(
-                "ANKIPAPER_BEHIND_PROXY is deprecated; "
-                "use ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        return self
 
 
 @lru_cache(maxsize=1)

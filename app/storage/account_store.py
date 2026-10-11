@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 
-from app.storage import Account, AccountBase
+from app.storage import Account
 from app.toolkit import ACCOUNTS_DIR, DATA_ROOT
 
 logger = logging.getLogger(__name__)

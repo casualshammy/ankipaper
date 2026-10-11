@@ -41,8 +41,5 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
           response.status_code,
           duration_ms,
       )
-      if self.settings.debug_headers:
-          self.logger.info("headers for %s %s:", request.method, request.url.path)
-          for name, value in request.headers.items():
-              self.logger.info("  %s: %s", name, value)
+
       return response

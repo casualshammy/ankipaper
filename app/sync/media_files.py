@@ -51,29 +51,6 @@ def media_dir(data_dir: Path) -> Path:
 
     return data_dir / "collection.media"
 
-
-def media_dir_size(media_dir: Path) -> int:
-    """Returns the total size in bytes of all regular files under ``media_dir``.
-
-    Missing directories count as 0. ``Path.rglob`` does not descend into
-    symlinked directories; for individual files ``is_file`` follows
-    symlinks by default, matching the original ``os.walk`` semantics.
-    """
-
-    if not media_dir.exists():
-        return 0
-    total = 0
-    for entry in media_dir.rglob("*"):
-        try:
-            file_stat = entry.stat()
-            if S_ISREG(file_stat.st_mode):
-                total += file_stat.st_size
-        except OSError:
-            # File removed between rglob and stat — ignore.
-            continue
-    return total
-
-
 def is_supported(fname: str) -> bool:
     """True if ``fname`` has an extension we want to download.
 
@@ -165,8 +142,7 @@ def extract_zip(
     target_dir: Path,
     *,
     max_file_bytes: int | None,
-    remaining_budget: int | None,
-) -> tuple[list[str], int, int, bool]:
+) -> tuple[list[str], int, int]:
     """Extracts a media zip into ``target_dir``.
 
     Zip format (see ``_anki_repo/rslib/src/sync/media/zip.rs:29-48``):
@@ -186,14 +162,9 @@ def extract_zip(
         target_dir: where to extract (e.g. ``/data/collection.media``).
         max_file_bytes: if not None, individual files larger than this
             are skipped with a warning and counted in ``oversize_count``.
-        remaining_budget: if not None, the remaining bytes available in
-            the user's collection before hitting the collection-size
-            limit. Files that would exceed it are not written; once the
-            budget is exhausted, ``hit_collection_limit`` is set.
 
     Returns:
-        Tuple ``(extracted_names, bytes_written, oversize_count,
-        hit_collection_limit)``.
+        Tuple ``(extracted_names, bytes_written, oversize_count)``.
     """
 
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -201,9 +172,7 @@ def extract_zip(
         meta = _read_meta(zf)
         return _extract_entries(
             zf, meta, target_dir,
-            max_file_bytes=max_file_bytes,
-            remaining_budget=remaining_budget,
-        )
+            max_file_bytes=max_file_bytes)
 
 
 def _read_meta(zf: zipfile.ZipFile) -> dict[str, str]:
@@ -225,14 +194,12 @@ def _extract_entries(
     target_dir: Path,
     *,
     max_file_bytes: int | None,
-    remaining_budget: int | None,
-) -> tuple[list[str], int, int, bool]:
+) -> tuple[list[str], int, int]:
     """Walks the zip entries and accumulates extraction results."""
 
     extracted: list[str] = []
     bytes_written = 0
     oversize_count = 0
-    hit_collection_limit = False
 
     for info in zf.infolist():
         if info.filename == _META_ENTRY or info.is_dir():
@@ -251,20 +218,10 @@ def _extract_entries(
 
         outcome = _extract_entry(
             zf, info, real_name, target_dir,
-            max_file_bytes=max_file_bytes,
-            remaining_budget=(
-                remaining_budget - bytes_written
-                if remaining_budget is not None
-                else None
-            ),
-        )
+            max_file_bytes=max_file_bytes)
 
         if outcome.kind == "skipped":
             oversize_count += 1
-        elif outcome.kind == "budget_hit":
-            hit_collection_limit = True
-            # No point processing more entries — collection is full.
-            break
         else:
             extracted.append(real_name)
             bytes_written += outcome.bytes_written
@@ -274,7 +231,7 @@ def _extract_entries(
                     real_name, info.file_size, outcome.bytes_written,
                 )
 
-    return extracted, bytes_written, oversize_count, hit_collection_limit
+    return extracted, bytes_written, oversize_count
 
 
 class _EntryOutcome:
@@ -294,7 +251,6 @@ def _extract_entry(
     target_dir: Path,
     *,
     max_file_bytes: int | None,
-    remaining_budget: int | None,
 ) -> _EntryOutcome:
     """Streams a single zip entry to disk with limit enforcement."""
 
@@ -309,7 +265,6 @@ def _extract_entry(
     target.parent.mkdir(parents=True, exist_ok=True)
     actual_size = 0
     size_exceeded = False
-    budget_exceeded = False
 
     with zf.open(info) as src, target.open("wb") as dst:
         while True:
@@ -320,25 +275,15 @@ def _extract_entry(
             if max_file_bytes is not None and actual_size > max_file_bytes:
                 size_exceeded = True
                 break
-            if remaining_budget is not None and actual_size > remaining_budget:
-                budget_exceeded = True
-                break
             dst.write(chunk)
 
-    if size_exceeded or budget_exceeded:
+    if size_exceeded:
         safe_unlink(target)
-        if size_exceeded:
-            logger.warning(
-                "Media file exceeds max_file_bytes during write: %r actual=%d > %d",
-                real_name, actual_size, max_file_bytes,
-            )
-            return _EntryOutcome("skipped", 0)
         logger.warning(
-            "Media collection size limit reached during write: %r "
-            "actual=%d > remaining=%d",
-            real_name, actual_size, remaining_budget,
+            "Media file exceeds max_file_bytes during write: %r actual=%d > %d",
+            real_name, actual_size, max_file_bytes,
         )
-        return _EntryOutcome("budget_hit", 0)
+        return _EntryOutcome("skipped", 0)
 
     return _EntryOutcome("written", actual_size)
 

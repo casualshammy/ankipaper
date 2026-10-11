@@ -29,7 +29,6 @@ from app.sync.media_files import (
     extract_zip,
     is_supported,
     media_dir,
-    media_dir_size,
     safe_media_path,
     safe_unlink,
 )
@@ -44,7 +43,7 @@ from app.sync.media_protocol import (
 from app.sync.state import SyncStatePhase
 
 # Re-export for callers that import ``SyncHttpError`` from this module.
-__all__ = ["sync_media_direct", "SyncHttpError", "PendingMediaFile", "MediaSyncResult"]
+__all__ = ["sync_media_direct", "SyncHttpError", "PendingMediaFile"]
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +57,6 @@ class PendingMediaFile(NamedTuple):
 
     fname: str
     sha1: str
-
-
-class MediaSyncResult(NamedTuple):
-    """Outcome of a single :func:`sync_media_direct` run."""
-
-    collection_too_large: bool
 
 
 class ChangesSummary(NamedTuple):
@@ -81,7 +74,6 @@ class DownloadSummary(NamedTuple):
     bytes_written: int
     skipped_oversize: int
     skipped_existing: int
-    collection_too_large: bool
 
 
 class DeletionSummary(NamedTuple):
@@ -112,8 +104,7 @@ def sync_media_direct(
     image_only: bool = True,
     progress_callback: ProgressCallback | None = None,
     max_file_bytes: int | None = None,
-    max_collection_bytes: int | None = None,
-) -> MediaSyncResult:
+) -> None:
     """Downloads media files from AnkiWeb into ``data_dir/collection.media``.
 
     Args:
@@ -133,10 +124,6 @@ def sync_media_direct(
             skipped_existing) -> None``.
         max_file_bytes: if not None, individual files larger than this
             are skipped (with a warning) and not written to disk.
-        max_collection_bytes: if not None, the total on-disk size of
-            ``collection.media/`` is bounded by this value. When the
-            existing directory is already at or above the limit, no new
-            files are written.
     """
 
     base = normalize_endpoint(endpoint)
@@ -161,7 +148,6 @@ def sync_media_direct(
         base, host_key, session_key, changes.all_files, media,
         batch_limit=batch_limit,
         max_file_bytes=max_file_bytes,
-        max_collection_bytes=max_collection_bytes,
         progress_callback=progress_callback,
     )
 
@@ -176,14 +162,12 @@ def sync_media_direct(
     logger.info(
         "Media sync complete: %d files downloaded, %d deleted, %d unsupported "
         "skipped, %d oversize skipped, %d already-present skipped, %d bytes written, "
-        "collection_too_large=%s, last_usn=%s",
+        "last_usn=%s",
         len(downloads.downloaded), deletions.deleted,
         changes.skipped_unsupported, downloads.skipped_oversize,
         downloads.skipped_existing, downloads.bytes_written,
-        downloads.collection_too_large, server_usn,
+        server_usn,
     )
-
-    return MediaSyncResult(collection_too_large=downloads.collection_too_large)
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +266,6 @@ def _download_all(
     *,
     batch_limit: int,
     max_file_bytes: int | None,
-    max_collection_bytes: int | None,
     progress_callback: ProgressCallback | None,
 ) -> DownloadSummary:
     """Downloads every entry in ``all_files`` in batches of ``batch_limit``."""
@@ -294,25 +277,7 @@ def _download_all(
     total_files = len(all_files)
     progress_total = max(total_files, 1)
 
-    # Compute the existing on-disk size once so we can enforce the
-    # collection-wide budget without re-scanning the directory per file.
-    base_size = media_dir_size(media) if max_collection_bytes is not None else 0
-    collection_too_large = (
-        max_collection_bytes is not None and base_size >= max_collection_bytes
-    )
-    if collection_too_large:
-        logger.warning(
-            "Media collection size limit reached before download: "
-            "current=%d limit=%d — new files will not be written",
-            base_size, max_collection_bytes,
-        )
-
     for i in range(0, total_files, batch_limit):
-        if collection_too_large:
-            # Already over the limit — skip remaining batches entirely;
-            # there is no point downloading zips we will not extract.
-            break
-
         batch_with_sha = all_files[i : i + batch_limit]
         if not batch_with_sha:
             continue
@@ -341,26 +306,13 @@ def _download_all(
             base, host_key, session_key,
             [p.fname for p in filtered.to_download],
         )
-        remaining_budget = (
-            max_collection_bytes - base_size - bytes_written
-            if max_collection_bytes is not None
-            else None
-        )
-        extracted, written_now, oversize_now, hit_limit = extract_zip(
+        extracted, written_now, oversize_now = extract_zip(
             zip_bytes, media,
             max_file_bytes=max_file_bytes,
-            remaining_budget=remaining_budget,
         )
         downloaded.extend(extracted)
         bytes_written += written_now
         skipped_oversize += oversize_now
-        if hit_limit:
-            collection_too_large = True
-            logger.warning(
-                "Media collection size limit reached during extraction: "
-                "base=%d written=%d limit=%d",
-                base_size, bytes_written, max_collection_bytes,
-            )
 
         _emit_progress(
             progress_callback, "downloadFiles",
@@ -372,9 +324,7 @@ def _download_all(
         downloaded=downloaded,
         bytes_written=bytes_written,
         skipped_oversize=skipped_oversize,
-        skipped_existing=skipped_existing,
-        collection_too_large=collection_too_large,
-    )
+        skipped_existing=skipped_existing)
 
 
 def _log_batch_start(i: int, batch: list[str], total: int) -> None:

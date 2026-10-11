@@ -264,7 +264,7 @@ async def check_sync_rate_limit(account_id: str) -> bool:
 def client_ip(request: Request, settings: Settings | None = None) -> str:
     """Returns the best-effort client IP for the incoming request.
 
-    When ``behind_proxy`` is true the real client IP is extracted from
+    When ``trusted_upstream_https_proxy`` is true the real client IP is extracted from
     headers set by upstream proxies:
 
     1. ``CF-Connecting-IP`` (Cloudflare) — preferred, set by CF's edge and
@@ -278,11 +278,11 @@ def client_ip(request: Request, settings: Settings | None = None) -> str:
     Otherwise ``request.client.host`` is used — which, in a Docker setup
     with reverse proxy in front, will be the reverse proxy container's IP and
     effectively rate-limit the entire deployment. Always set
-    ``ANKIPAPER_BEHIND_PROXY=true`` in production.
+    ``ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY=true`` in production.
     """
 
     settings = settings or get_settings()
-    if settings.behind_proxy:
+    if settings.trusted_upstream_https_proxy:
         cf_ip = request.headers.get("CF-Connecting-IP")
         if cf_ip:
             cf_ip = cf_ip.strip()

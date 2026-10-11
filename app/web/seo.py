@@ -4,7 +4,7 @@
 These helpers resolve the public origin used in canonical and Open Graph
 URLs. When ``settings.public_url`` is configured, that origin wins. When
 it is empty we fall back to the scheme/host of the incoming request —
-but only when the app is configured to trust ``behind_proxy`` headers;
+but only when the app is configured to trust ``TRUSTED_UPSTREAM_HTTPS_PROXY`` headers;
 otherwise we return a path-only URL so self-hosted deployments that
 have not set ``ANKIPAPER_PUBLIC_URL`` do not accidentally publish the
 internal reverse-proxy origin.
@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
+
+from app.toolkit import ANKIPAPER_DESCRIPTION, ANKIPAPER_NAME
 
 if TYPE_CHECKING:
     from fastapi import Request
@@ -26,13 +28,13 @@ def resolve_origin(request: Request, settings: Settings) -> str:
 
     Returns an empty string when no public origin is configured and the
     request cannot be trusted as a public origin (i.e. when
-    ``behind_proxy`` is False). Callers then render path-only URLs.
+    ``TRUSTED_UPSTREAM_HTTPS_PROXY`` is False). Callers then render path-only URLs.
     """
 
     public = (settings.public_url or "").rstrip("/")
     if public:
         return public
-    if not settings.behind_proxy:
+    if not settings.trusted_upstream_https_proxy:
         return ""
     return f"{request.url.scheme}://{request.url.netloc}"
 
@@ -72,13 +74,12 @@ def webapplication_jsonld(request: Request) -> str:
     template via the ``structured_data`` block in ``base.html``.
     """
 
-    settings = get_settings()
     payload = {
         "@context": "https://schema.org",
         "@type": "WebApplication",
-        "name": settings.brand_name,
+        "name": ANKIPAPER_NAME,
         "url": canonical_url(request),
-        "description": settings.meta_description,
+        "description": ANKIPAPER_DESCRIPTION,
         "applicationCategory": "EducationalApplication",
         "operatingSystem": (
             "Any modern browser (Kindle, Kobo, Android, iOS, desktop)"
