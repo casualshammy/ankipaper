@@ -9,7 +9,6 @@ from math import ceil
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, Form, Query, Request
-from app.config import Settings
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -54,7 +53,6 @@ async def home(
 ) -> HTMLResponse | RedirectResponse:
     """Renders the landing page (anonymous) or the list of decks."""
 
-    settings: Settings = request.app.state.settings
     templates: Jinja2Templates = request.app.state.templates
 
     if account is None:

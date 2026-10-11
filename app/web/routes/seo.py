@@ -1,18 +1,20 @@
-"""SEO support routes: ``/robots.txt`` and ``/sitemap.xml``.
+"""SEO and well-known support routes: ``/robots.txt``, ``/sitemap.xml``
+and ``/.well-known/security.txt``.
 
 These endpoints do not require authentication, do not depend on Redis
 and do not touch the Anki collection. They are served even when the
-backend is unavailable so that crawlers can keep their view of the site
-in sync with the public origin.
+backend is unavailable so that crawlers and security scanners can keep
+their view of the site in sync with the public origin.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse, Response
+from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
 from app.web.seo import resolve_origin
@@ -82,3 +84,26 @@ async def sitemap_xml(request: Request) -> Response:
     parts.append("")
     body = "\n".join(parts)
     return Response(content=body, media_type="application/xml; charset=utf-8")
+
+
+@router.get(
+    "/.well-known/security.txt", 
+    response_class=PlainTextResponse, 
+    include_in_schema=False)
+async def security_txt(request: Request) -> Response:
+    """Renders ``security.txt`` (RFC 9116) from the Jinja template."""
+
+    settings = get_settings()
+    if not settings.contacts_email:
+        return Response(status_code=404)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        ".well-known/security.txt",
+        {
+            "contact": settings.contacts_email,
+            "expires": (datetime.now(UTC) + timedelta(days=182)).isoformat(),
+            },
+        media_type="text/plain; charset=utf-8",
+    )

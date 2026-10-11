@@ -15,14 +15,14 @@ from app.metrics.definitions import HTTP_REQUEST_DURATION, HTTP_REQUESTS
 
 _EXCLUDED_PREFIXES: frozenset[str] = frozenset({"/healthz", "/metrics"})
 _EXCLUDED_EXACT: frozenset[str] = frozenset({"/favicon.ico"})
+_EXCLUDED_METHODS: frozenset[str] = frozenset({"HEAD"})
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
     """Records HTTP request count and latency per route template."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        path = request.url.path
-        if not self._should_measure(path):
+        if not self._should_measure(request):
             return await call_next(request)
 
         method = request.method
@@ -40,9 +40,15 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         return response
 
     @staticmethod
-    def _should_measure(path: str) -> bool:
+    def _should_measure(req: Request) -> bool:
+        path = req.url.path
         if path in _EXCLUDED_EXACT:
             return False
+
+        method = req.method
+        if method in _EXCLUDED_METHODS:
+            return False
+
         return not any(path.startswith(p) for p in _EXCLUDED_PREFIXES)
 
     @staticmethod
