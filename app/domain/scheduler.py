@@ -22,7 +22,9 @@ from anki.cards import CardId
 from anki.decks import DeckId
 from anki.errors import UndoEmpty
 
-logger = logging.getLogger(__name__)
+from app.storage.account import Account
+
+_common_logger = logging.getLogger(__name__)
 
 # Anki user flags: 0 = none, 1 = red, 2 = orange, 3 = green, 4 = blue.
 _FLAG_LABELS: dict[int, str] = {
@@ -454,14 +456,17 @@ def set_card_marked(
 
 
 def get_next_card(
+    account: Account,
     col: anki.collection.Collection,
     deck_id: int,
 ) -> CardView | None:
     """Returns the next due card in the deck, or None."""
 
+    log = _common_logger.getChild(account.id)
+
     queued = _queued_card_for(col, deck_id)
     if queued is None or not queued.cards:
-        logger.info(
+        log.info(
             "get_next_card: deck_id=%s no due cards (new=%s learning=%s review=%s)",
             deck_id,
             None if queued is None else queued.new_count,
@@ -473,7 +478,7 @@ def get_next_card(
     card_state = head.states.current
     intervals = _compute_intervals(head)
     card_type = _card_type_from_state(card_state)
-    logger.info(
+    log.info(
         "get_next_card: deck_id=%s next card_id=%s type=%s "
         "state(normal=%s filtered=%s) intervals(again=%s hard=%s good=%s easy=%s) "
         "remaining new=%s learning=%s review=%s",
@@ -519,6 +524,7 @@ def get_card_view(
 
 
 def answer_card(
+    account: Account,
     col: anki.collection.Collection,
     card_id: int,
     rating: Rating,
@@ -546,11 +552,12 @@ def answer_card(
             the deck the card currently lives in is used.
     """
 
+    log = _common_logger.getChild(account.id)
     backend = col._backend  # type: ignore[attr-defined]
 
     if new_state is None or current_state is None:
         deck_id = _resolve_deck_id(col, card_id, deck_id)
-        current_state, new_state = _resolve_answer_states(col, backend, card_id, deck_id, rating)
+        current_state, new_state = _resolve_answer_states(account, col, backend, card_id, deck_id, rating)
 
     try:
         backend.answer_card(
@@ -566,7 +573,7 @@ def answer_card(
     except anki.errors.InvalidInput as exc:
         if "not at top of queue" not in str(exc):
             raise
-        logger.warning(
+        log.warning(
             "answer_card: discarded stale/duplicate answer card_id=%s deck_id=%s rating=%s (err=%s)",
             card_id,
             deck_id,
@@ -585,7 +592,7 @@ def answer_card(
     if queued is not None and queued.cards:
         next_cid = int(queued.cards[0].card.id)
 
-    logger.info(
+    log.info(
         "answer_card: card_id=%s rating=%s deck_id=%s remaining new=%s learning=%s review=%s next=%s",
         card_id,
         int(rating),
@@ -622,6 +629,7 @@ def _resolve_deck_id(
 
 
 def _resolve_answer_states(
+    account: Account,
     col: anki.collection.Collection,
     backend,
     card_id: int,
@@ -636,10 +644,12 @@ def _resolve_answer_states(
     different deck).
     """
 
+    log = _common_logger.getChild(account.id)
+
     queued = _queued_card_for(col, deck_id)
     head = queued.cards[0] if queued and queued.cards else None
     if head is not None and int(head.card.id) == int(card_id):
-        logger.info(
+        log.info(
             "answer_card: card_id=%s deck_id=%s using queued.states rating=%s",
             card_id,
             deck_id,
@@ -647,7 +657,7 @@ def _resolve_answer_states(
         )
         return head.states.current, _select_new_state(head.states, rating)
 
-    logger.warning(
+    log.warning(
         "answer_card: card_id=%s NOT in deck_id=%s queue (head=%s); using get_scheduling_states",
         card_id,
         deck_id,

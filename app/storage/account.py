@@ -5,7 +5,7 @@ import logging
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Final, TypeVar
+from typing import Any, Concatenate, Final, TypeVar
 
 import anki.collection
 
@@ -101,7 +101,7 @@ class Account(AccountBase):
 
     async def run(
         self,
-        fn: Callable[..., T],
+        fn: Callable[Concatenate[anki.collection.Collection, ...], T],
         *args: Any,
         **kwargs: Any,
     ) -> T:
@@ -122,9 +122,25 @@ class Account(AccountBase):
             assert self._collection is not None
             return await asyncio.to_thread(fn, self._collection, *args, **kwargs)
 
+    async def run_extended(
+        self, 
+        fn: Callable[Concatenate[Account, anki.collection.Collection, ...], T], 
+        *args: Any, 
+        **kwargs: Any) -> T:
+        """
+        Runs the synchronous function ``fn`` with the collection open, 
+        passing the account and the collection as the first two arguments.
+        """
+
+        async with self._lock:
+            self._ensure_collection_open()
+            self._last_access = time.monotonic()
+            assert self._collection is not None
+            return await asyncio.to_thread(fn, self, self._collection, *args, **kwargs)
+
     async def peek(
         self,
-        fn: Callable[..., T],
+        fn: Callable[Concatenate[anki.collection.Collection, ...], T],
         *args: Any,
         **kwargs: Any,
     ) -> T | None:

@@ -11,6 +11,7 @@ from typing import Never
 from anki import sync_pb2
 from anki.collection import Collection
 from anki.errors import BackendError
+from anki.sync import SyncAuth, SyncStatus
 
 from app.storage.account import Account
 from app.sync.auth import is_auth_error, make_auth
@@ -215,7 +216,7 @@ async def is_sync_required_or_throw(
         raise AuthExpiredError()
 
     auth = make_auth(host_key, endpoint)
-    status = await asyncio.wait_for(account.run(lambda c: c.sync_status(auth)), timeout=3.0) 
+    status = await asyncio.wait_for(account.run(_collection_sync_status, auth), timeout=3.0) 
     return bool(status.required), status.new_endpoint or None
 
 
@@ -288,3 +289,7 @@ def try_sync(
             error=str(exc),
             auth_expired=isinstance(exc, AuthExpiredError),
         )
+    
+
+def _collection_sync_status(col: Collection, auth: SyncAuth) -> SyncStatus:
+    return col.sync_status(auth)

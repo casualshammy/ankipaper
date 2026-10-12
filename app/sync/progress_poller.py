@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import anki.collection
+from anki.collection import Collection, Progress
 
 if TYPE_CHECKING:
     from app.storage.account import Account
@@ -76,7 +77,7 @@ class CollectionProgressPoller:
             except asyncio.CancelledError:
                 raise
             try:
-                progress: anki.collection.Progress | None = await self._account.peek(lambda col: col.latest_progress())
+                progress: anki.collection.Progress | None = await self._account.peek(self._collection_latest_progress)
             except Exception:
                 logger.debug("progress poll failed", exc_info=True)
                 continue
@@ -88,4 +89,7 @@ class CollectionProgressPoller:
             except Exception:
                 logger.exception("Failed to apply progress to state")
 
-    
+
+    @staticmethod
+    def _collection_latest_progress(col: Collection) -> Progress:
+        return col.latest_progress()

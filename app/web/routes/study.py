@@ -196,7 +196,7 @@ async def study_get(
 
     templates: Jinja2Templates = request.app.state.templates
 
-    view = await account.run(get_next_card, deck_id)
+    view = await account.run_extended(get_next_card, deck_id)
     if view is None:
         return await _session_done(request, account, deck_id)
 
@@ -297,7 +297,7 @@ async def study_post(
         except ValueError:
             return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
-        outcome = await account.run(answer_card, card_id_int, rating, deck_id=deck_id)
+        outcome = await account.run_extended(answer_card, card_id_int, rating, deck_id=deck_id)
         if outcome.stale:
             logger.info(
                 "study_post: stale answer card_id=%s deck_id=%s rating=%s; "
