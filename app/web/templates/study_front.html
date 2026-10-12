@@ -19,14 +19,9 @@
 
   <div class="actions-split">
     <a class="btn" href="/">Back to decks</a>
-    <form method="post" action="/deck/{{ deck_id }}/study" class="form form-inline">
+    <form method="post" action="/deck/{{ deck_id }}/reveal" class="form form-inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
       <input type="hidden" name="card_id" value="{{ card.card_id }}">
-      <input type="hidden" name="card_type" value="{{ card.card_type }}">
-      <input type="hidden" name="again_interval" value="{{ card.intervals.again if card.intervals else '—' }}">
-      <input type="hidden" name="hard_interval" value="{{ card.intervals.hard if card.intervals else '—' }}">
-      <input type="hidden" name="good_interval" value="{{ card.intervals.good if card.intervals else '—' }}">
-      <input type="hidden" name="easy_interval" value="{{ card.intervals.easy if card.intervals else '—' }}">
       <button type="submit" name="reveal" value="1" class="btn btn-primary" autofocus>Show answer</button>
     </form>
   </div>

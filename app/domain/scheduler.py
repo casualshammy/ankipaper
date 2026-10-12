@@ -18,7 +18,7 @@ from typing import Literal
 import anki.collection
 import anki.errors
 import anki.scheduler_pb2 as sp
-from anki.cards import CardId
+from anki.cards import CardId, CardType
 from anki.decks import DeckId
 from anki.errors import UndoEmpty
 
@@ -35,9 +35,7 @@ _FLAG_LABELS: dict[int, str] = {
     4: "blue",
 }
 
-# Card-type keys, in priority order used by ``_normal_to_card_type``.
-# New / review / relearning / learning is also the order of fields on
-# ``SchedulingState.Normal`` (see scheduler.proto).
+# Card-type keys.
 _CARD_TYPE_FIELDS: tuple[Literal["new"], Literal["review"], Literal["relearning"], Literal["learning"]] = (
     "new", "review", "relearning", "learning")
 
@@ -131,8 +129,10 @@ class CardView:
     is_cloze: bool
     note_type_name: str
     fields: list[tuple[str, str]]
-    card_type: str = "new"
-    """Card type: ``new``, ``learning``, ``review`` or ``relearning``."""
+
+    card_type_native: CardType = anki.collection.CARD_TYPE_NEW
+    """Native card type as defined by Anki"""
+
     intervals: CardIntervals | None = None
     """Interval preview for the Again/Hard/Good/Easy buttons (or ``None``)."""
     flag: int = 0
@@ -145,12 +145,16 @@ class CardView:
     def css_class(self) -> str:
         """CSS class for the current card type (for highlighting in the template)."""
 
-        return {
-            "new": "tag-current-new",
-            "learning": "tag-current-learning",
-            "review": "tag-current-review",
-            "relearning": "tag-current-learning",
-        }.get(self.card_type, "tag-current-new")
+        if self.card_type_native == anki.collection.CARD_TYPE_NEW:
+            return "tag-current-new"
+        elif self.card_type_native == anki.collection.CARD_TYPE_LRN:
+            return "tag-current-learning"
+        elif self.card_type_native == anki.collection.CARD_TYPE_REV:
+            return "tag-current-review"
+        elif self.card_type_native == anki.collection.CARD_TYPE_RELEARNING:
+            return "tag-current-learning"
+        else:
+            return "tag-current-new"
 
     @property
     def flag_label(self) -> str:
@@ -348,7 +352,7 @@ def empty_filtered_deck(
     return count
 
 
-def _get_card_or_raise(col: anki.collection.Collection, card_id: int):
+def get_card_or_raise(col: anki.collection.Collection, card_id: int):
     """Return the card or raise ``ValueError`` if it does not exist."""
 
     try:
@@ -399,7 +403,7 @@ def set_card_flag(
 
     if not 0 <= flag <= 4:
         raise ValueError(f"invalid flag: {flag!r}")
-    _get_card_or_raise(col, card_id)
+    get_card_or_raise(col, card_id)
     result = col.set_user_flag_for_cards(flag, [CardId(card_id)])
     return int(result.count)
 
@@ -420,7 +424,7 @@ def delete_note_by_card(
         ValueError: if the card does not exist, or not belongs to the specified deck.
     """
 
-    card = _get_card_or_raise(col, card_id)
+    card = get_card_or_raise(col, card_id)
     if not card_deck_matches_or_descends(col, int(card.did), deck_id):
         raise ValueError(f"Card {card_id} (deck {int(card.did)}) is not in deck {deck_id}")
     col.remove_notes_by_card([CardId(card_id)])
@@ -445,7 +449,7 @@ def set_card_marked(
         ValueError: if the card does not exist.
     """
 
-    note = _get_card_or_raise(col, card_id).note()
+    note = get_card_or_raise(col, card_id).note()
     if marked != note.has_tag("marked"):
         if marked:
             note.add_tag("marked")
@@ -475,18 +479,15 @@ def get_next_card(
         )
         return None
     head = queued.cards[0]
-    card_state = head.states.current
     intervals = _compute_intervals(head)
-    card_type = _card_type_from_state(card_state)
     log.info(
-        "get_next_card: deck_id=%s next card_id=%s type=%s "
+        "get_next_card: deck_id=%s next card_id=%s "
         "state(normal=%s filtered=%s) intervals(again=%s hard=%s good=%s easy=%s) "
         "remaining new=%s learning=%s review=%s",
         deck_id,
         int(head.card.id),
-        card_type,
-        card_state.HasField("normal"),
-        card_state.HasField("filtered"),
+        head.states.current.HasField("normal"),
+        head.states.current.HasField("filtered"),
         intervals.again,
         intervals.hard,
         intervals.good,
@@ -495,13 +496,28 @@ def get_next_card(
         queued.learning_count,
         queued.review_count,
     )
-    return _load_card_view(col, int(head.card.id), card_type, intervals)
+    return _load_card_view(col, int(head.card.id), intervals)
+
+
+def get_card_intervals(col: anki.collection.Collection, card_id: int) -> CardIntervals | None:
+    """Return the card intervals for the given card."""
+
+    try:
+        card_states = col._backend.get_scheduling_states(card_id)
+    except anki.errors.NotFoundError:
+        return None
+
+    return CardIntervals(
+        again=get_card_interval_label(card_states.again),
+        hard=get_card_interval_label(card_states.hard),
+        good=get_card_interval_label(card_states.good),
+        easy=get_card_interval_label(card_states.easy),
+    )
 
 
 def get_card_view(
     col: anki.collection.Collection,
     card_id: int,
-    card_type: str = "new",
     intervals: CardIntervals | None = None,
 ) -> CardView | None:
     """Returns the render view of a specific card, or None.
@@ -509,16 +525,12 @@ def get_card_view(
     Args:
         col: open collection.
         card_id: card id.
-        card_type: card type (``new``/``learning``/``review``/``relearning``).
-            Determined on the front side and passed through the form so
-            that this information is not lost on the back page (where a
-            repeated ``get_queued_cards`` will no longer return this card).
         intervals: interval preview; passed through the form from the
             front page.
     """
 
     try:
-        return _load_card_view(col, card_id, card_type, intervals)
+        return _load_card_view(col, card_id, intervals)
     except anki.errors.NotFoundError:
         return None
 
@@ -676,7 +688,6 @@ def _select_new_state(states: sp.SchedulingStates, rating: Rating) -> sp.Schedul
 def _load_card_view(
     col: anki.collection.Collection,
     card_id: int,
-    card_type: str = "new",
     intervals: CardIntervals | None = None,
 ) -> CardView:
     """Builds a CardView for a card by id.
@@ -684,9 +695,6 @@ def _load_card_view(
     Args:
         col: open collection.
         card_id: card id.
-        card_type: type (``new`` / ``learning`` / ``review`` / ``relearning``),
-            determined from ``queued.cards[0].states.current``. ``"new"`` is
-            used as a fallback if no type was passed.
         intervals: interval preview (see ``_compute_intervals``). If
             ``None`` — the ``intervals`` field will be ``None``, and the
             template will show ``"—"`` on the back page.
@@ -704,7 +712,7 @@ def _load_card_view(
         is_cloze=notetype.get("type") == anki.collection.MODEL_CLOZE,
         note_type_name=str(notetype.get("name", "")),
         fields=_extract_fields(notetype, note),
-        card_type=card_type,
+        card_type_native=card.type,
         intervals=intervals,
         flag=int(card.user_flag()),
         is_marked=note.has_tag("marked"),
@@ -725,46 +733,6 @@ def _field_name(spec) -> str:
     """Return the ``name`` from a notetype field spec (handles dict / str)."""
 
     return spec["name"] if isinstance(spec, dict) else str(spec)
-
-
-def _normal_to_card_type(normal: sp.SchedulingState.Normal) -> str:
-    """Converts ``SchedulingState.Normal`` to a user-facing type.
-
-    ``Normal`` is a nested ``oneof`` variant of ``SchedulingState`` and
-    at the same time a separate field ``ReschedulingFilter.original_state``.
-    It has no ``normal`` field (unlike ``SchedulingState``), so we unpack
-    it directly. Returns ``"new"`` if no recognised variant is set.
-    """
-
-    for kind in _CARD_TYPE_FIELDS:
-        if normal.HasField(kind):
-            return kind
-    return "new"
-
-
-def _card_type_from_state(state: sp.SchedulingState) -> str:
-    """Determines the user-facing card type (``SchedulingState.current``).
-
-    Handles three variants of ``SchedulingState``:
-    - ``normal`` — a regular deck; subtype by ``normal.kind`` (new /
-      learning / review / relearning);
-    - ``filtered.rescheduling`` — a filtered deck in rescheduling mode;
-      ``original_state`` has type ``Normal`` (see
-      ``scheduler.proto:114-115``); we read it via ``_normal_to_card_type``;
-    - ``filtered.preview`` — preview mode; treated as ``"new"``.
-    """
-
-    if state.HasField("normal"):
-        return _normal_to_card_type(state.normal)
-
-    if state.HasField("filtered"):
-        filtered = state.filtered
-        if filtered.HasField("rescheduling"):
-            return _normal_to_card_type(filtered.rescheduling.original_state)
-        # Preview (haven't started learning yet) — show as ``new`` for the UI.
-        return "new"
-
-    return "new"
 
 
 def _interval_from_state(state: sp.SchedulingState) -> NextInterval | None:
@@ -819,14 +787,14 @@ def _seconds_interval(seconds: int) -> NextInterval:
     return NextInterval(seconds=seconds, label=_format_interval(seconds))
 
 
-def _label_or_dash(state: sp.SchedulingState) -> str:
+def get_card_interval_label(state: sp.SchedulingState) -> str:
     """Short interval label, or ``"—"`` if the state is not recognised."""
 
     interval = _interval_from_state(state)
     return interval.label if interval is not None else "—"
 
 
-def _compute_intervals(queued_card) -> CardIntervals:
+def _compute_intervals(queued_card: sp.QueuedCards.QueuedCard) -> CardIntervals:
     """Interval preview for the Again/Hard/Good/Easy buttons.
 
     From ``queued_card.states`` (type ``SchedulingStates``) we take the
@@ -842,10 +810,10 @@ def _compute_intervals(queued_card) -> CardIntervals:
 
     states = queued_card.states
     return CardIntervals(
-        again=_label_or_dash(states.again),
-        hard=_label_or_dash(states.hard),
-        good=_label_or_dash(states.good),
-        easy=_label_or_dash(states.easy),
+        again=get_card_interval_label(states.again),
+        hard=get_card_interval_label(states.hard),
+        good=get_card_interval_label(states.good),
+        easy=get_card_interval_label(states.easy),
     )
 
 

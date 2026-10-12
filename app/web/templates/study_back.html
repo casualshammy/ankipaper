@@ -13,7 +13,7 @@
     {{ card.answer_html | safe }}
   </article>
 
-  <form method="post" action="/deck/{{ deck_id }}/study" class="form">
+  <form method="post" action="/deck/{{ deck_id }}/answer" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="card_id" value="{{ card.card_id }}">
     <div class="ratings">

@@ -13,13 +13,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.domain.scheduler import (
-    CardIntervals,
     DeckStats,
     Rating,
     answer_card,
     card_deck_matches_or_descends,
     delete_note_by_card,
     empty_filtered_deck,
+    get_card_intervals,
     get_card_view,
     get_deck_card_count,
     get_deck_due_breakdown,
@@ -227,18 +227,11 @@ async def study_get(
     )
 
 
-@router.post("/deck/{deck_id}/study", response_model=None)
-async def study_post(
+@router.post("/deck/{deck_id}/reveal", response_model=None)
+async def reveal_post(
     request: Request,
     deck_id: int,
-    reveal: str = Form(""),
-    rate: str = Form(""),
     card_id: str = Form(""),
-    card_type: str = Form(""),
-    again_interval: str = Form(""),
-    hard_interval: str = Form(""),
-    good_interval: str = Form(""),
-    easy_interval: str = Form(""),
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
 ) -> HTMLResponse | RedirectResponse:
@@ -247,7 +240,60 @@ async def study_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
+    logger = _common_logger.getChild(account.id)
+
+    if not card_id:
+        logger.warning("No card_id provided")
+        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+
+    try:
+        card_id_int = int(card_id)
+    except ValueError:
+        logger.warning("Invalid card_id provided")
+        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+    
+    card_intervals = await account.run(get_card_intervals, card_id_int)
     templates: Jinja2Templates = request.app.state.templates
+
+    view = await account.run(get_card_view, card_id_int, card_intervals)
+    if view is None:
+        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+
+    breakdown = await account.run(get_deck_due_breakdown, deck_id)
+    is_filtered = await account.run(_deck_is_filtered, deck_id)
+    is_sync_required = await _is_sync_required(logger, account)
+    return templates.TemplateResponse(
+        request,
+        "study_back.html",
+        {
+            "account": account,
+            "deck_id": deck_id,
+            "is_filtered": is_filtered,
+            "card": view,
+            "remaining": breakdown.total,
+            "remaining_new": breakdown.new,
+            "remaining_learning": breakdown.learning,
+            "remaining_review": breakdown.review,
+            "sync_required": is_sync_required
+        },
+    )
+
+
+@router.post("/deck/{deck_id}/answer", response_model=None)
+async def answer_post(
+    request: Request,
+    deck_id: int,
+    card_id: str = Form(""),
+    rate: str = Form(""),
+    account: Account | None = Depends(get_current_account_optional),
+    _: None = Depends(require_csrf),
+) -> HTMLResponse | RedirectResponse:
+    """Handles Answer within a review session."""
+
+    if account is None:
+        return RedirectResponse("/login", status_code=303)
+
+    logger = _common_logger.getChild(account.id)
 
     if not card_id:
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
@@ -257,60 +303,25 @@ async def study_post(
     except ValueError:
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
-
-    if reveal:
-        intervals = CardIntervals(
-            again=again_interval or "—",
-            hard=hard_interval or "—",
-            good=good_interval or "—",
-            easy=easy_interval or "—",
-        )
-        view = await account.run(
-            get_card_view, card_id_int, card_type or "new", intervals
-        )
-        if view is None:
-            return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-
-        breakdown = await account.run(get_deck_due_breakdown, deck_id)
-        is_filtered = await account.run(_deck_is_filtered, deck_id)
-        is_sync_required = await _is_sync_required(logger, account)
-        return templates.TemplateResponse(
-            request,
-            "study_back.html",
-            {
-                "account": account,
-                "deck_id": deck_id,
-                "is_filtered": is_filtered,
-                "card": view,
-                "remaining": breakdown.total,
-                "remaining_new": breakdown.new,
-                "remaining_learning": breakdown.learning,
-                "remaining_review": breakdown.review,
-                "sync_required": is_sync_required
-            },
-        )
-
-    if rate:
-        try:
-            rating = Rating(int(rate))
-        except ValueError:
-            return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-
-        outcome = await account.run_extended(answer_card, card_id_int, rating, deck_id=deck_id)
-        if outcome.stale:
-            logger.info(
-                "study_post: stale answer card_id=%s deck_id=%s rating=%s; "
-                "redirecting to current head",
-                card_id_int,
-                deck_id,
-                int(rating),
-            )
-            return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-        if outcome.next_card_id is None:
-            return await _session_done(request, account, deck_id)
+    try:
+        rating = Rating(int(rate))
+    except ValueError:
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
+    outcome = await account.run_extended(answer_card, card_id_int, rating, deck_id=deck_id)
+    if outcome.stale:
+        logger.info(
+            "answer_post: stale answer card_id=%s deck_id=%s rating=%s; "
+            "redirecting to current head",
+            card_id_int,
+            deck_id,
+            int(rating),
+        )
+        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
+    
+    if outcome.next_card_id is None:
+        return await _session_done(request, account, deck_id)
+    
     return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
 
@@ -351,7 +362,7 @@ async def delete_note_get(
         err_msg = f"Card id '{card_id_truncated}' is not a valid number"
         return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
 
-    view = await account.run(get_card_view, cid, "new", None)
+    view = await account.run(get_card_view, cid, None)
     if view is None:
         err_msg = f"Card '{cid}' does not exist"
         return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
