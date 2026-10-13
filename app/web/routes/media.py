@@ -8,7 +8,6 @@ After rewriting to ``/ms/`` this route serves files from the
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -18,14 +17,7 @@ from app.sync.media_files import safe_media_path
 from app.web.deps import get_current_account
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
-
-
-def _media_dir(account: Account) -> Path:
-    """Returns the path to the media files directory of the account."""
-
-    return account.media_dir()
 
 
 @router.get("/ms/{filename:path}")
@@ -45,10 +37,7 @@ async def serve_media(
             or symlink traversal).
     """
 
-    media_root = _media_dir(account)
-    # Canonical path-traversal hardening — rejects NUL bytes, drive
-    # letters, ``..`` segments, and paths that traverse a symlink under
-    # ``media_root``. See :func:`app.sync.media_files.safe_media_path`.
+    media_root = account.media_dir()
     file_path = safe_media_path(filename, media_root)
     if file_path is None:
         raise HTTPException(status_code=400, detail="Invalid path")
@@ -58,8 +47,7 @@ async def serve_media(
 
     return FileResponse(
         file_path,
-        headers={
-            "Cache-Control": "private, max-age=3600",
-            "Vary": "Cookie",
-        },
-    )
+        headers = {
+            "Cache-Control": "private, max-age=60", 
+            "Vary": "Cookie"
+        })
