@@ -23,6 +23,7 @@ from anki.decks import DeckId
 from anki.errors import UndoEmpty
 
 from app.storage.account import Account
+from app.toolkit import get_account_logger
 
 _common_logger = logging.getLogger(__name__)
 
@@ -466,7 +467,7 @@ def get_next_card(
 ) -> CardView | None:
     """Returns the next due card in the deck, or None."""
 
-    log = _common_logger.getChild(account.id)
+    log = get_account_logger(_common_logger, account.id)
 
     queued = _queued_card_for(col, deck_id)
     if queued is None or not queued.cards:
@@ -564,7 +565,7 @@ def answer_card(
             the deck the card currently lives in is used.
     """
 
-    log = _common_logger.getChild(account.id)
+    log = get_account_logger(_common_logger, account.id)
     backend = col._backend  # type: ignore[attr-defined]
 
     if new_state is None or current_state is None:
@@ -656,7 +657,7 @@ def _resolve_answer_states(
     different deck).
     """
 
-    log = _common_logger.getChild(account.id)
+    log = get_account_logger(_common_logger, account.id)
 
     queued = _queued_card_for(col, deck_id)
     head = queued.cards[0] if queued and queued.cards else None

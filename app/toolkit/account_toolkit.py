@@ -1,3 +1,5 @@
+import logging
+from logging import Logger
 from pathlib import Path
 
 DATA_ROOT = Path("/data")
@@ -29,3 +31,9 @@ def sanitize_account_id_or_throw(username: str) -> str:
     raise ValueError("Username too long")
   
   return cleaned
+
+def get_account_logger(common_logger: Logger, account_id: str) -> Logger:
+  """Returns a logger instance for the given account."""
+
+  logger_name = f"{common_logger.name} [{account_id}]"
+  return logging.getLogger(logger_name)

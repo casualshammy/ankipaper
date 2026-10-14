@@ -17,7 +17,7 @@ from app import __version__
 from app.config import Settings, get_settings
 from app.metrics.collectors import AnkiPaperCollector
 from app.storage import get_account_store
-from app.web.middlewares import AccessLogMiddleware, MetricsMiddleware
+from app.web.middlewares import AccessLogMiddleware, CacheControlMiddleware, MetricsMiddleware
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,7 +69,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates = Jinja2Templates(
         directory=str(BASE_DIR / "web" / "templates"),
     )
-    
+
+    app.add_middleware(CacheControlMiddleware)
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(AccessLogMiddleware, settings, logger)
 

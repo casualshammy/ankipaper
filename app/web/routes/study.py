@@ -33,6 +33,7 @@ from app.domain.scheduler import (
 )
 from app.storage.account import Account
 from app.sync.client import is_sync_required_or_throw
+from app.toolkit.account_toolkit import get_account_logger
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
 
@@ -60,7 +61,7 @@ async def home(
             request,
             "landing.html")
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
     has_collection = account.deck_collection_file_exists()
     collection_was_open = account.is_open() if has_collection else False
     decks: list[DeckStats] = []
@@ -146,7 +147,7 @@ async def deck_rebuild_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
 
     try:
         count = await account.run(rebuild_filtered_deck, deck_id)
@@ -170,7 +171,7 @@ async def deck_empty_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
 
     try:
         count = await account.run(empty_filtered_deck, deck_id)
@@ -193,7 +194,7 @@ async def study_get(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
 
     return await _get_study_get_html(request, account, deck_id, error_msg, logger)
 
@@ -211,7 +212,7 @@ async def reveal_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
 
     return await _get_reveal_post_html(request, account, deck_id, card_id, "", logger)
 
@@ -230,7 +231,7 @@ async def answer_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
 
     if not card_id:
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
@@ -281,7 +282,7 @@ async def undo_post(
 async def delete_note_get(
     request: Request,
     deck_id: int,
-    card_id: str = Query(""),
+    card_id: int = Query(gt=0),
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
     """Render the delete-confirmation page for the given card."""
@@ -289,26 +290,18 @@ async def delete_note_get(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
 
-    try:
-        cid = int(card_id)
-    except ValueError:
-        card_id_truncated = card_id[:100]
-        logger.warning(f"delete_note_get: can't parse card_id: '{card_id_truncated}'")
-        err_msg = f"Card id '{card_id_truncated}' is not a valid number"
-        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
-
-    view = await account.run(get_card_view, cid, None)
+    view = await account.run(get_card_view, card_id, None)
     if view is None:
-        err_msg = f"Card '{cid}' does not exist"
+        err_msg = f"Card '{card_id}' does not exist"
         return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
 
     true_deck = await account.run(card_deck_matches_or_descends, view.deck_id, deck_id)
     if (not true_deck):
         err = f"delete_note_get: invalid deck id '{deck_id}', card's deck id: '{view.deck_id}'"
         logger.warning(err)
-        err_msg = f"Card '{cid}' does not belong to the current deck '{deck_id}'"
+        err_msg = f"Card '{card_id}' does not belong to the current deck '{deck_id}'"
         return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
 
     is_sync_required = await _is_sync_required(logger, account)
@@ -328,7 +321,7 @@ async def delete_note_get(
 @router.post("/deck/{deck_id}/delete-note", response_model=None)
 async def delete_note_post(
     deck_id: int,
-    card_id: str = Form(""),
+    card_id: int = Form(gt=0),
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
 ) -> RedirectResponse:
@@ -337,18 +330,17 @@ async def delete_note_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
 
     try:
-        cid = int(card_id)
-        await account.run(delete_note_by_card, deck_id, cid)
-        logger.info("delete_note_post: card_id=%s deck_id=%s deleted", cid, deck_id)
+        await account.run(delete_note_by_card, deck_id, card_id)
+        logger.info("delete_note_post: card_id=%s deck_id=%s deleted", card_id, deck_id)
         return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
     except ValueError as exc:
         exc_str = str(exc)
         logger.warning(
             "delete_note_post: card_id=%s deck_id=%s failed: %s",
-            card_id[:100],
+            card_id,
             deck_id,
             exc_str,
         )
@@ -373,7 +365,7 @@ async def set_card_flag_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
     error_msg = ""
 
     try:
@@ -403,7 +395,7 @@ async def set_card_mark_post(
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
     error_msg = ""
     
     try:
@@ -440,7 +432,7 @@ async def _session_done(
 ) -> HTMLResponse:
     """Renders the session-complete page."""
 
-    logger = _common_logger.getChild(account.id)
+    logger = get_account_logger(_common_logger, account.id)
 
     templates: Jinja2Templates = request.app.state.templates
     is_filtered = await account.run(_deck_is_filtered, deck_id)

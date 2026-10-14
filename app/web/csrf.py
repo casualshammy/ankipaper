@@ -31,68 +31,21 @@ from app.web.session import Session, make_serializer, read_session
 logger = logging.getLogger(__name__)
 
 
-def _csrf_serializer() -> URLSafeSerializer | None:
-    """Returns an itsdangerous serializer for CSRF tokens, or None.
-
-    Reuses :func:`app.web.session.make_serializer` with a dedicated
-    salt so cookie tokens and CSRF tokens are not interchangeable.
-    """
-
-    return make_serializer("ankipaper-csrf")
-
-
-def make_csrf_token(sid: str) -> str:
-    """Signs a CSRF token bound to ``sid`` (the current account id).
-
-    Args:
-        sid: account id from the session, or an empty string for
-            anonymous requests.
-
-    Returns:
-        Signed token, or an empty string if the session secret has
-        not been generated yet (the page still renders, but the
-        corresponding endpoint will reject the empty token if CSRF
-        protection is enforced there).
-    """
-
-    s = _csrf_serializer()
-    if s is None:
-        return ""
-    return s.dumps({"sid": sid})
-
-
-def verify_csrf_token(token: str, expected_sid: str) -> bool:
-    """Returns ``True`` iff ``token`` is a valid CSRF token for ``expected_sid``."""
-
-    if not token:
-        return False
-    s = _csrf_serializer()
-    if s is None:
-        return False
-    try:
-        data = s.loads(token)
-    except BadSignature:
-        return False
-    if not isinstance(data, dict):
-        return False
-    return data.get("sid") == expected_sid
-
-
 async def require_csrf(
     request: Request,
     session: Session = Depends(get_session),
 ) -> None:
-    """FastAPI dependency that validates the CSRF token on a POST request.
+    """
+    FastAPI dependency that validates the CSRF token on a request.
 
-    Reads ``csrf_token`` from the form and verifies it against the
-    current session's account id. Raises 403 on any failure.
+    Reads ``csrf_token`` from the form/header and verifies it against the current session's account id. 
+    Raises 403 on any failure.
 
-    Skipped when the request is not authenticated — the route handler
-    will redirect to ``/login`` on its own, so there is no privileged
-    state to defend.
+    Skipped when the request is not authenticated - the route handler will redirect to ``/login`` on its own, 
+    so there is no privileged state to defend.
     """
 
-    if not session.is_authenticated:
+    if not session.is_authenticated or not session.account_id:
         return
 
     token = request.headers.get("X-CSRF-Token", "")
@@ -102,16 +55,16 @@ async def require_csrf(
             token = str(form.get("csrf_token", ""))
         except Exception:
             pass
-    expected_sid = session.account_id or ""
-    if not verify_csrf_token(token, expected_sid):
+
+    if not _is_csrf_valid(token, session.account_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="CSRF token invalid",
-        )
+            detail="CSRF token missing, invalid or expired")
 
 
 def csrf_token(request: Request) -> str:
-    """Jinja2 global that returns the CSRF token for the current session.
+    """
+    Jinja2 global that returns the CSRF token for the current session.
 
     Registered via ``templates.env.globals`` so every template can
     render ``<input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">``
@@ -119,4 +72,50 @@ def csrf_token(request: Request) -> str:
     """
 
     session = read_session(request)
-    return make_csrf_token(session.account_id or "")
+    if not session.is_authenticated or not session.account_id:
+        return ""
+
+    serializer = _csrf_serializer()
+    if serializer is None:
+        return ""
+
+    token = serializer.dumps({
+        "sid": session.account_id
+    })
+    return token
+
+
+def _csrf_serializer() -> URLSafeSerializer | None:
+    """
+    Returns an itsdangerous serializer for CSRF tokens, or None.
+
+    Reuses :func:`app.web.session.make_serializer` with a dedicated
+    salt so cookie tokens and CSRF tokens are not interchangeable.
+    """
+
+    return make_serializer("ankipaper-csrf")
+
+def _is_csrf_valid(token: str, account_id: str) -> bool:
+    """
+    Validates a CSRF token against the given account ID.
+
+    Returns True if the token is valid, False otherwise.
+    """
+
+    if not token:
+        return False
+    
+    serializer = _csrf_serializer()
+    if serializer is None:
+        return False
+    
+    try:
+        data = serializer.loads(token)
+    except BadSignature:
+        return False
+    
+    if not isinstance(data, dict):
+        return False
+
+    token_account_id = data.get("sid")
+    return token_account_id == account_id
