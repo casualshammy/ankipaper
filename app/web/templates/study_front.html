@@ -22,7 +22,7 @@
     <form method="post" action="/deck/{{ deck_id }}/study" class="form form-inline">
       <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
       <input type="hidden" name="reveal_card_id" value="{{ card.card_id }}">
-      <button type="submit" class="btn btn-primary" autofocus>Show answer</button>
+      <button type="submit" class="btn btn-primary">Show answer</button>
     </form>
   </div>
 
@@ -49,4 +49,8 @@
     {% endif %}
   </div>
 
+{% endblock %}
+
+{% block scripts %}
+{% include "_scroll_to_bar.html" %}
 {% endblock %}

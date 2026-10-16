@@ -1,5 +1,7 @@
 # AnkiPaper
 
+[![AI Level 3](https://ai-level.dev/badge/standard/3.svg)](https://ai-level.dev/level-3)
+
 <img src="app/web/static/app_icon_256.webp" alt="AnkiPaper" width="96" align="right">
 
 AnkiWeb client for Amazon Kindle and other e-ink browsers. AnkiPaper lets you sign in to AnkiWeb, browse decks, and review cards in a server-rendered interface designed for slow monochrome devices.

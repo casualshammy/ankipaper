@@ -1,0 +1,18 @@
+<script>
+(function () {
+  const primary = document.querySelector('button.btn-primary');
+  if (primary && typeof primary.focus === 'function') {
+    try {
+      primary.focus({ preventScroll: true });
+    } catch (e) {
+      primary.focus();
+    }
+  }
+
+  const bar = document.getElementById('remaining-bar');
+  if (bar) {
+    const rect = bar.getBoundingClientRect();
+    window.scrollTo(0, rect.top + window.pageYOffset);
+  }
+})();
+</script>
