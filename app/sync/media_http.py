@@ -117,7 +117,7 @@ def sync_media_direct(
             ``server_usn`` (used for the next incremental sync).
         batch_limit: max files per ``downloadFiles`` request.
         image_only: if True (default), only download files with supported
-            extensions — images (``.jpg``, ``.jpeg``, ``.png``, ``.gif``,
+            extensions — images (``.jpg``, ``.jpeg``, ``.png``,
             ``.webp``) and fonts (``.otf``, ``.ttf``, ``.woff``,
             ``.woff2``). Audio, video, JS, etc. are skipped.
         progress_callback: optional callback ``(phase, current, total,

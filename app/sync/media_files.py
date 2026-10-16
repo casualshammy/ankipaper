@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 #: Kindle and only waste disk space.
 SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
     {
-        ".jpg", ".jpeg", ".png", ".gif", ".webp",
+        ".jpg", ".jpeg", ".png", ".webp",
         ".otf", ".ttf", ".woff", ".woff2",
     }
 )

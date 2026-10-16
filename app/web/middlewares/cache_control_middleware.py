@@ -13,7 +13,7 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
       return response
 
     content_type = response.headers.get("Content-Type", "")
-    if (content_type.find("text/html") == -1):
+    if ("text/html" not in content_type):
       return response
 
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"

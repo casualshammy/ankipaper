@@ -11,9 +11,8 @@
   </div>
   <div class="flag-toolbar">
     <div class="flag-buttons">
-      <form method="post" action="/set-card-mark" class="form form-inline">
+      <form method="post" action="/deck/{{ card.deck_id }}/set-card-mark" class="form form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-        <input type="hidden" name="deck_id" value="{{ card.deck_id }}">
         <input type="hidden" name="card_id" value="{{ card.card_id }}">
         <input type="hidden" name="back_card" value="{{ 'True' if back_card else 'False' }}">
         <input type="hidden" name="marked" value="{{ 'False' if card.is_marked else 'True' }}">
@@ -22,9 +21,8 @@
           class="flag-btn{% if card.is_marked %} flag-btn-on{% endif %}"
           aria-label="{% if card.is_marked %}Unmark{% else %}Mark{% endif %}">{% if card.is_marked %}★{% else %}☆{% endif %}</button>
       </form>
-      <form method="post" action="/set-card-flag" class="form form-inline">
+      <form method="post" action="/deck/{{ card.deck_id }}/set-card-flag" class="form form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-        <input type="hidden" name="deck_id" value="{{ card.deck_id }}">
         <input type="hidden" name="card_id" value="{{ card.card_id }}">
         <input type="hidden" name="back_card" value="{{ 'True' if back_card else 'False' }}">
         <input type="hidden" name="flag" value="{{ '0' if card.flag == 1 else '1' }}">
@@ -33,9 +31,8 @@
           class="flag-btn{% if card.flag == 1 %} flag-btn-on{% endif %}"
           aria-label="Red">R</button>
       </form>
-      <form method="post" action="/set-card-flag" class="form form-inline">
+      <form method="post" action="/deck/{{ card.deck_id }}/set-card-flag" class="form form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-        <input type="hidden" name="deck_id" value="{{ card.deck_id }}">
         <input type="hidden" name="card_id" value="{{ card.card_id }}">
         <input type="hidden" name="back_card" value="{{ 'True' if back_card else 'False' }}">
         <input type="hidden" name="flag" value="{{ '0' if card.flag == 2 else '2' }}">
@@ -44,9 +41,8 @@
           class="flag-btn{% if card.flag == 2 %} flag-btn-on{% endif %}"
           aria-label="Orange">O</button>
       </form>
-      <form method="post" action="/set-card-flag" class="form form-inline">
+      <form method="post" action="/deck/{{ card.deck_id }}/set-card-flag" class="form form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-        <input type="hidden" name="deck_id" value="{{ card.deck_id }}">
         <input type="hidden" name="card_id" value="{{ card.card_id }}">
         <input type="hidden" name="back_card" value="{{ 'True' if back_card else 'False' }}">
         <input type="hidden" name="flag" value="{{ '0' if card.flag == 3 else '3' }}">

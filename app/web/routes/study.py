@@ -189,7 +189,7 @@ async def study_get(
     error_msg: str = Query(""),
     account: Account | None = Depends(get_current_account_optional),
 ) -> HTMLResponse | RedirectResponse:
-    """Shows the front of the next due card or the session-complete page."""
+    """Shows the front of the due card."""
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
@@ -199,33 +199,32 @@ async def study_get(
     return await _get_study_get_html(request, account, deck_id, error_msg, logger)
 
 
-@router.post("/deck/{deck_id}/reveal", response_model=None)
-async def reveal_post(
+@router.post("/deck/{deck_id}/study", response_model=None)
+async def study_post(
     request: Request,
     deck_id: int,
-    card_id: int = Form(gt = 0),
+    reveal_card_id: int = Form(gt=0),
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
 ) -> HTMLResponse | RedirectResponse:
-    """Handles Reveal / Answer within a review session."""
+    """Shows the back of the due card."""
 
     if account is None:
         return RedirectResponse("/login", status_code=303)
 
     logger = get_account_logger(_common_logger, account.id)
 
-    return await _get_reveal_post_html(request, account, deck_id, card_id, "", logger)
+    return await _get_reveal_post_html(request, account, deck_id, reveal_card_id, "", logger)
 
 
 @router.post("/deck/{deck_id}/answer", response_model=None)
 async def answer_post(
-    request: Request,
     deck_id: int,
-    card_id: str = Form(""),
-    rate: str = Form(""),
+    card_id: int = Form(gt = 0),
+    rate: Rating = Form(gt = 0),
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
-) -> HTMLResponse | RedirectResponse:
+) -> RedirectResponse:
     """Handles Answer within a review session."""
 
     if account is None:
@@ -233,32 +232,15 @@ async def answer_post(
 
     logger = get_account_logger(_common_logger, account.id)
 
-    if not card_id:
-        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-
-    try:
-        card_id_int = int(card_id)
-    except ValueError:
-        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-
-    try:
-        rating = Rating(int(rate))
-    except ValueError:
-        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-
-    outcome = await account.run_extended(answer_card, card_id_int, rating, deck_id=deck_id)
+    outcome = await account.run_extended(answer_card, card_id, rate, deck_id=deck_id)
     if outcome.stale:
         logger.info(
-            "answer_post: stale answer card_id=%s deck_id=%s rating=%s; "
+            "answer_post: stale answer card_id=%s deck_id=%s rate=%s; "
             "redirecting to current head",
-            card_id_int,
+            card_id,
             deck_id,
-            int(rating),
+            int(rate),
         )
-        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-    
-    if outcome.next_card_id is None:
-        return await _session_done(request, account, deck_id)
     
     return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
 
@@ -350,10 +332,10 @@ async def delete_note_post(
         )
 
 
-@router.post("/set-card-flag", response_model=None)
+@router.post("/deck/{deck_id}/set-card-flag", response_model=None)
 async def set_card_flag_post(
     request: Request,
-    deck_id: int = Form(gt = 0),
+    deck_id: int,
     card_id: int = Form(gt = 0),
     flag: int = Form(),
     back_card: bool = Form(),
@@ -380,10 +362,10 @@ async def set_card_flag_post(
         return await _get_study_get_html(request, account, deck_id, error_msg, logger)
 
         
-@router.post("/set-card-mark", response_model=None)
+@router.post("/deck/{deck_id}/set-card-mark", response_model=None)
 async def set_card_mark_post(
     request: Request,
-    deck_id: int = Form(gt = 0),
+    deck_id: int,
     card_id: int = Form(gt = 0),
     marked: bool = Form(),
     back_card: bool = Form(),

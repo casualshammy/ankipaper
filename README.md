@@ -32,7 +32,7 @@ It uses Anki's native collection format, the official AnkiWeb sync protocol, and
 - Cards and notes cannot be edited.
 - There is no card browser or analytics dashboard.
 - JavaScript-dependent notes may lose functionality because script tags are removed.
-- Only `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.otf`, `.ttf`, `.woff`, and `.woff2` files are synchronized. Audio, video, JavaScript, and other media are intentionally skipped.
+- Only `.jpg`, `.jpeg`, `.png`, `.webp`, `.otf`, `.ttf`, `.woff`, and `.woff2` files are synchronized. Audio, video, JavaScript, and other media are intentionally skipped.
 - Media files above the configured per-file or collection limits are not downloaded.
 - Most rendering is server-side. The only routine client-side behavior is sync-status polling on the home page, so offline study is not supported.
 - Kindle-specific CSS is deliberately simple: no color-dependent UI, animations, shadows, or complex responsive behavior.
