@@ -17,6 +17,7 @@ from app.domain.scheduler import (
     Rating,
     answer_card,
     card_deck_matches_or_descends,
+    deck_is_filtered,
     delete_note_by_card,
     empty_filtered_deck,
     get_card_intervals,
@@ -417,7 +418,7 @@ async def _session_done(
     logger = get_account_logger(_common_logger, account.id)
 
     templates: Jinja2Templates = request.app.state.templates
-    is_filtered = await account.run(_deck_is_filtered, deck_id)
+    is_filtered = await account.run(deck_is_filtered, deck_id)
     has_cards = bool(await account.run(get_deck_card_count, deck_id))
     undo = await account.run(get_undo_status)
     is_sync_required = await _is_sync_required(logger, account)
@@ -434,12 +435,6 @@ async def _session_done(
     )
 
 
-def _deck_is_filtered(col, deck_id: int) -> bool:
-    """True if the deck is a filtered (cram) deck."""
-
-    return bool(col.decks.is_filtered(int(deck_id)))
-
-
 async def _get_study_get_html(
     request: Request, 
     account: Account, 
@@ -453,7 +448,7 @@ async def _get_study_get_html(
         return await _session_done(request, account, deck_id)
 
     breakdown = await account.run(get_deck_due_breakdown, deck_id)
-    is_filtered = await account.run(_deck_is_filtered, deck_id)
+    is_filtered = await account.run(deck_is_filtered, deck_id)
     has_cards = bool(await account.run(get_deck_card_count, deck_id))
     undo = await account.run(get_undo_status)
     is_sync_required = await _is_sync_required(logger, account)

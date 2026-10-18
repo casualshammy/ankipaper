@@ -460,6 +460,15 @@ def set_card_marked(
     return bool(note.has_tag("marked"))
 
 
+def deck_is_filtered(
+    col: anki.collection.Collection,
+    deck_id: int,
+) -> bool:
+    """Check if the deck is a filtered deck."""
+    
+    return col.decks.is_filtered(DeckId(deck_id))
+
+
 def get_next_card(
     account: Account,
     col: anki.collection.Collection,
