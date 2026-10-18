@@ -8,3 +8,4 @@ _ankipaper-old/
 Anki-Android-main/
 .data/
 .redis/
+/node_modules/

@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES6",
+    "lib": ["DOM", "ES2015"],
+    "noEmit": false,
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "skipLibCheck": true
+  },
+  "include": ["app/web/static/js/**/*.ts"]
+}

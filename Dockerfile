@@ -1,3 +1,13 @@
+FROM node:24-slim AS js-builder
+WORKDIR /build
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY app ./app
+RUN npx tsc
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -12,6 +22,7 @@ RUN pip install --upgrade pip \
     && pip install .
 
 COPY app ./app
+COPY --from=js-builder /build/app/web/static/js/study_spa.js ./app/web/static/js/study_spa.js
 
 RUN useradd --create-home --uid 1000 ankipaper \
     && mkdir -p /data \
