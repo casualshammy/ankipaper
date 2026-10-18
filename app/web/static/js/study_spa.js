@@ -42,10 +42,6 @@
         setTimeout(function () { location.reload(); }, 1500);
         throw { message: 'csrf' };
       }
-      if (r.status === 404) {
-        location.assign('/deck/' + cfg.deckId + '/study');
-        throw { message: 'spa-disabled' };
-      }
       if (!r.ok) {
         return r.json().catch(function () { return {}; }).then(function (body) {
           throw { message: body && body.error_msg ? body.error_msg : ('HTTP ' + r.status), code: r.status, body: body };
@@ -125,7 +121,14 @@
     if (history.replaceState) {
       try { history.replaceState(null, '', base); } catch (e) { /* ignore */ }
     }
+    updateSyncIndicator(p.sync_required);
     scrollAndFocus();
+  }
+
+  function updateSyncIndicator(syncRequired) {
+    var ind = document.getElementById('sync-indicator');
+    if (!ind) return;
+    ind.textContent = syncRequired ? ' \u25cf' : '';
   }
 
   function renderBar(p) {
@@ -392,13 +395,14 @@
     });
   }
 
-  function onFlag(targetFlag) {
+  function onFlag(clickedFlag) {
     if (!state || !state.card) return Promise.resolve();
     var prev = state.card.flag;
-    setFlagOptimistic(targetFlag);
+    var target = (prev === clickedFlag) ? 0 : clickedFlag;
+    setFlagOptimistic(target);
     var body = new FormData();
     body.append('card_id', String(state.card.card_id));
-    body.append('flag', String(targetFlag));
+    body.append('flag', String(target));
     return api('POST', base + '/flag', body).then(function (r) {
       state.card.flag = r.flag;
       setFlagOptimistic(r.flag);

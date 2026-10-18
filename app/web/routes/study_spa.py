@@ -1,8 +1,5 @@
-"""JSON-SPA study routes.
-
-Self-contained module: all new study endpoints live under
-``/deck/{deck_id}/spa/...`` and coexist with the legacy
-``/deck/{deck_id}/study`` HTML flow in ``app.web.routes.study``.
+"""
+JSON-SPA study routes.
 
 The SPA client is a small vanilla-JS application served by
 ``GET /deck/{deck_id}/spa``; it talks back to the JSON endpoints
@@ -39,6 +36,7 @@ from app.domain.scheduler import (
     undo_last_op,
 )
 from app.storage.account import Account
+from app.sync.client import is_sync_required_or_throw
 from app.toolkit.account_toolkit import get_account_logger
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
@@ -70,9 +68,34 @@ class StudyStatePayload:
     remaining_learn: int
     remaining_review: int
     card_type: _CardTypeLabel
+    sync_required: bool
 
     def to_json(self) -> dict[str, Any]:
-        card_json = _card_view_to_json(self.card) if self.card is not None else None
+        card_json: dict[str, Any] | None = None
+        if self.card:
+            intervals: dict[str, str] | None = None
+            if self.card.intervals is not None:
+                intervals = {
+                    "again": self.card.intervals.again,
+                    "hard": self.card.intervals.hard,
+                    "good": self.card.intervals.good,
+                    "easy": self.card.intervals.easy,
+                }
+
+            card_json = {
+                "card_id": self.card.card_id,
+                "deck_id": self.card.deck_id,
+                "question_html": self.card.question_html,
+                "answer_html": self.card.answer_html,
+                "is_cloze": self.card.is_cloze,
+                "note_type_name": self.card.note_type_name,
+                "fields": [list(f) for f in self.card.fields],
+                "card_type": self.card.css_class.removeprefix("tag-current-"),
+                "intervals": intervals,
+                "flag": self.card.flag,
+                "is_marked": self.card.is_marked,
+            }
+
         return {
             "phase": self.phase,
             "deck_id": self.deck_id,
@@ -90,31 +113,8 @@ class StudyStatePayload:
             "remaining_learn": self.remaining_learn,
             "remaining_review": self.remaining_review,
             "card_type": self.card_type,
+            "sync_required": self.sync_required,
         }
-
-
-def _card_view_to_json(card: CardView) -> dict[str, Any]:
-    intervals: dict[str, str] | None = None
-    if card.intervals is not None:
-        intervals = {
-            "again": card.intervals.again,
-            "hard": card.intervals.hard,
-            "good": card.intervals.good,
-            "easy": card.intervals.easy,
-        }
-    return {
-        "card_id": card.card_id,
-        "deck_id": card.deck_id,
-        "question_html": card.question_html,
-        "answer_html": card.answer_html,
-        "is_cloze": card.is_cloze,
-        "note_type_name": card.note_type_name,
-        "fields": [list(f) for f in card.fields],
-        "card_type": card.css_class.removeprefix("tag-current-"),
-        "intervals": intervals,
-        "flag": card.flag,
-        "is_marked": card.is_marked,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +142,26 @@ def _deck_is_filtered(col, deck_id: int) -> bool:
     return bool(col.decks.is_filtered(int(deck_id)))
 
 
+async def _is_sync_required(logger: logging.Logger, account: Account) -> bool:
+    """True if AnkiWeb has changes we haven't pulled yet.
+
+    Mirrors ``app.web.routes.study._is_sync_required`` so the SPA can
+    refresh the Sync indicator on every action. Kept as a local copy
+    because the SPA module must not depend on the legacy one.
+    """
+
+    if account.sync_state.status == "running":
+        return False
+    try:
+        result, _ = await is_sync_required_or_throw(
+            account, account.sync_state.conflict_new_endpoint
+        )
+        return result
+    except Exception as ex:
+        logger.error("_is_sync_required failed: %s", ex)
+        return True
+
+
 async def _build_front_payload(
     account: Account,
     deck_id: int,
@@ -167,6 +187,7 @@ async def _build_front_payload(
         remaining_learn=breakdown.learning,
         remaining_review=breakdown.review,
         card_type=_card_type_label(view),
+        sync_required=await _is_sync_required(logger, account),
     )
 
 
@@ -197,6 +218,7 @@ async def _build_back_payload(
         remaining_learn=breakdown.learning,
         remaining_review=breakdown.review,
         card_type=_card_type_label(view),
+        sync_required=await _is_sync_required(logger, account),
     )
 
 
@@ -219,6 +241,7 @@ async def _build_done_payload(
         remaining_learn=0,
         remaining_review=0,
         card_type="new",
+        sync_required=await _is_sync_required(logger, account),
     )
 
 
