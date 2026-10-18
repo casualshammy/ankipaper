@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Study — AnkiPaper{% endblock %}
+
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block brand_text %}{% endblock %}
+
+{% block content %}
+  <div id="study-root">
+    <p class="muted">Loading…</p>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    window.__STUDY_SPA__ = {
+      deckId: {{ deck_id | tojson }},
+      isFiltered: {{ is_filtered | tojson }},
+      csrfToken: {{ csrf_token(request) | tojson }}
+    };
+  </script>
+  <script src="/static/js/study_spa.js" defer></script>
+{% endblock %}

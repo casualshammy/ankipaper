@@ -62,7 +62,7 @@
       <tbody>
         {% for d in decks %}
           <tr>
-            <td><a class="deck-link" href="/deck/{{ d.deck_id }}/study">{{ d.name }}</a></td>
+            <td><a class="deck-link" href="/deck/{{ d.deck_id }}/{% if study_spa_enabled %}spa{% else %}study{% endif %}">{{ d.name }}</a></td>
             {{ cell_num(d.new) }}
             {{ cell_num(d.learning) }}
             {{ cell_num(d.review) }}

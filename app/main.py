@@ -82,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates.env.globals["csrf_token"] = csrf_token_global
     app.state.templates.env.globals["show_privacy_policy"] = settings.show_privacy_policy
     app.state.templates.env.globals["contacts_email"] = settings.contacts_email
+    app.state.templates.env.globals["study_spa_enabled"] = settings.study_spa_enabled
 
     from app.toolkit import ANKIPAPER_DESCRIPTION, ANKIPAPER_NAME
     from app.web.seo import canonical_url, og_image_url, webapplication_jsonld
@@ -98,6 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.web.routes import seo as seo_routes
     from app.web.routes import static as static_routes
     from app.web.routes import study as study_routes
+    from app.web.routes import study_spa as study_spa_routes
     from app.web.routes import sync as sync_routes
 
     app.include_router(auth_routes.router)
@@ -107,6 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(static_routes.router)
     app.include_router(sync_routes.router)
     app.include_router(study_routes.router)
+    app.include_router(study_spa_routes.router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> JSONResponse:

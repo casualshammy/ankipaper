@@ -121,6 +121,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    study_spa_enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, the deck-study link on the home page points to "
+            "/deck/{id}/spa (the JS-SPA variant) instead of /deck/{id}/study."
+        ),
+    )
+
     public_url: str = Field(
         default="",
         description=(
