@@ -137,7 +137,9 @@ export function createActions(
   }
 
   function onDeleteConfirm(): Promise<void> {
-    if (!ctx.confirmCard) return Promise.resolve();
+    if (!ctx.confirmCard)
+      return Promise.resolve();
+
     const cardId = ctx.confirmCard.card_id;
     // Reset UI mode BEFORE the network call so that:
     // - on success, the new state is rendered as the study screen;
@@ -149,7 +151,10 @@ export function createActions(
     body.append('card_id', String(cardId));
     return api<StudyState>('POST', ctx.base + '/delete', body).then(render, (e) => {
       const msg = errorMessageFn(e);
-      if (msg) showErrorFn(msg);
+      if (ctx.state)
+        render(ctx.state);
+      if (msg)
+        showErrorFn(msg);
     });
   }
 

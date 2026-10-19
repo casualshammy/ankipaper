@@ -9,3 +9,4 @@ Anki-Android-main/
 .data/
 .redis/
 /node_modules/
+app/web/static/js/study_spa.js
