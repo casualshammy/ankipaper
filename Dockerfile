@@ -6,9 +6,9 @@ RUN npm ci
 
 COPY tsconfig.json ./
 COPY app ./app
-RUN npx tsc
+RUN npm run build:js
 
-FROM python:3.11-slim
+FROM python:3.11-slim AS final
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

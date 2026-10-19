@@ -1,13 +1,17 @@
 {
   "compilerOptions": {
     "target": "ES6",
+    "module": "esnext",
     "lib": ["DOM", "ES2015"],
-    "noEmit": false,
+    "noEmit": true,
     "strict": true,
     "noImplicitAny": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@spa/*": ["./app/web/static/js/study_spa/*"]
+    }
   },
-  "include": ["app/web/static/js/**/*.ts"]
+  "include": ["app/web/static/js/**/*.ts", "tests/study-spa/**/*.ts"]
 }

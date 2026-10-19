@@ -13,12 +13,12 @@
 {% endblock %}
 
 {% block scripts %}
-  <script>
-    window.__STUDY_SPA__ = {
-      deckId: {{ deck_id | tojson }},
-      isFiltered: {{ is_filtered | tojson }},
-      csrfToken: {{ csrf_token(request) | tojson }}
-    };
+  <script id="spa-config" type="application/json">
+    {
+      "deckId": {{ deck_id | tojson }},
+      "isFiltered": {{ is_filtered | tojson }},
+      "csrfToken": {{ csrf_token(request) | tojson }}
+    }
   </script>
   <script src="/static/js/study_spa.js" defer></script>
 {% endblock %}
