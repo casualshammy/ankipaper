@@ -151,6 +151,10 @@ input[type="password"] {
   align-items: center;
 }
 
+.actions-row + .actions-row {
+  margin-top: 0;
+}
+
 /* Split actions (for example, "Back to decks" on the left and "Show answer"
    on the right on the same row on the review page). */
 .actions-split {

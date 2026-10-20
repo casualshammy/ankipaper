@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 import time
-import psutil
 from functools import lru_cache
 
+import psutil
 from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.registry import Collector
 

@@ -26,16 +26,19 @@
     </form>
   </div>
 
-  <div class="actions-row">
-    {% if undo.can_undo %}
+  {% if undo.can_undo %}
+    <div class="actions-row">
       <form method="post" action="/deck/{{ deck_id }}/undo" class="form form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
         <button type="submit" class="btn" aria-label="Undo">
           Undo{% if undo.label %} {{ undo.label | lower }}{% endif %}
         </button>
       </form>
-    {% endif %}
-    {% if is_filtered %}
+    </div>
+  {% endif %}
+
+  {% if is_filtered %}
+    <div class="actions-row">
       <form method="post" action="/deck/{{ deck_id }}/rebuild" class="form form-inline">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
         <button type="submit" class="btn">Rebuild deck</button>
@@ -46,8 +49,8 @@
           <button type="submit" class="btn">Empty deck</button>
         </form>
       {% endif %}
-    {% endif %}
-  </div>
+    </div>
+  {% endif %}
 
 {% endblock %}
 

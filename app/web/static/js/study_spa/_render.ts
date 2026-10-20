@@ -132,63 +132,87 @@ export function createRender(ctx: SpaCtx) {
     return el('div');
   }
 
-  function renderSecondary(p: StudyState): HTMLElement {
+  // Undo button or null when undo is unavailable. Shared by the study and
+  // done screens.
+  function undoBtn(p: StudyState): HTMLElement | null {
+    if (!p.undo || !p.undo.can_undo) return null;
+    const label = p.undo.label ? 'Undo ' + p.undo.label.toLowerCase() : 'Undo';
+    return el(
+      'button',
+      {
+        type: 'button',
+        class: 'btn',
+        'data-action': 'undo',
+        'aria-label': 'Undo',
+      },
+      label,
+    );
+  }
+
+  function undoRow(p: StudyState): HTMLElement | null {
+    const btn = undoBtn(p);
+    if (!btn) return null;
+    return el('div', { class: 'actions-row' }, btn);
+  }
+
+  // Deck-level actions (rebuild / empty) in their own row, or null for
+  // non-filtered decks. Shared by the study and done screens.
+  function deckActionsRow(p: StudyState): HTMLElement | null {
+    if (!p.is_filtered) return null;
     const row = el('div', { class: 'actions-row' });
-    if (p.undo && p.undo.can_undo) {
-      const label = p.undo.label ? 'Undo ' + p.undo.label.toLowerCase() : 'Undo';
+    row.appendChild(
+      el(
+        'button',
+        {
+          type: 'button',
+          class: 'btn',
+          'data-action': 'rebuild',
+        },
+        'Rebuild deck',
+      ),
+    );
+    if (p.has_cards) {
       row.appendChild(
         el(
           'button',
           {
             type: 'button',
             class: 'btn',
-            'data-action': 'undo',
-            'aria-label': 'Undo',
+            'data-action': 'empty',
           },
-          label,
+          'Empty deck',
         ),
       );
     }
+    return row;
+  }
+
+  // Secondary actions split into dedicated rows: undo first, then deck
+  // tools, then delete. Empty rows are not rendered.
+  function renderSecondary(p: StudyState): HTMLElement {
+    const wrap = el('div');
+    const undo = undoRow(p);
+    if (undo) wrap.appendChild(undo);
+    const deck = deckActionsRow(p);
+    if (deck) wrap.appendChild(deck);
     if (p.phase === 'back') {
-      row.appendChild(
+      wrap.appendChild(
         el(
-          'button',
-          {
-            type: 'button',
-            class: 'btn',
-            'data-action': 'delete',
-          },
-          'Delete note',
-        ),
-      );
-    }
-    if (p.is_filtered) {
-      row.appendChild(
-        el(
-          'button',
-          {
-            type: 'button',
-            class: 'btn',
-            'data-action': 'rebuild',
-          },
-          'Rebuild deck',
-        ),
-      );
-      if (p.has_cards) {
-        row.appendChild(
+          'div',
+          { class: 'actions-row' },
           el(
             'button',
             {
               type: 'button',
               class: 'btn',
-              'data-action': 'empty',
+              'data-action': 'delete',
             },
-            'Empty deck',
+            'Delete note',
           ),
-        );
-      }
+        ),
+      );
     }
-    return row;
+    return wrap;
   }
 
   function renderDone(p: StudyState): HTMLElement {
@@ -196,48 +220,13 @@ export function createRender(ctx: SpaCtx) {
     wrap.appendChild(el('h1', { text: 'Session complete' }));
     wrap.appendChild(el('p', { text: 'No more cards due in this deck right now.' }));
     wrap.appendChild(el('p', null, el('a', { class: 'btn', href: '/' }, 'Back to decks')));
+
+    const undo = undoRow(p);
+    if (undo) wrap.appendChild(undo);
+
     if (p.is_filtered) {
-      const row = el('div', { class: 'actions-row' });
-      if (p.undo && p.undo.can_undo) {
-        const label = p.undo.label ? 'Undo ' + p.undo.label.toLowerCase() : 'Undo';
-        row.appendChild(
-          el(
-            'button',
-            {
-              type: 'button',
-              class: 'btn',
-              'data-action': 'undo',
-              'aria-label': 'Undo',
-            },
-            label,
-          ),
-        );
-      }
-      row.appendChild(
-        el(
-          'button',
-          {
-            type: 'button',
-            class: 'btn',
-            'data-action': 'rebuild',
-          },
-          'Rebuild deck',
-        ),
-      );
-      if (p.has_cards) {
-        row.appendChild(
-          el(
-            'button',
-            {
-              type: 'button',
-              class: 'btn',
-              'data-action': 'empty',
-            },
-            'Empty deck',
-          ),
-        );
-      }
-      wrap.appendChild(row);
+      const deck = deckActionsRow(p);
+      if (deck) wrap.appendChild(deck);
     }
     return wrap;
   }

@@ -167,6 +167,32 @@ describe('createRender', () => {
       expect(ctx.root.querySelector('[data-action="empty"]')).toBeNull();
     });
 
+    it('splits secondary actions into rows: undo, deck tools, delete', () => {
+      const ctx = makeCtx();
+      const { render } = createRender(ctx);
+      render(
+        makeState({
+          phase: 'back',
+          is_filtered: true,
+          has_cards: true,
+          undo: { label: 'Answer card', can_undo: true, can_redo: false },
+        }),
+      );
+      const rows = ctx.root.querySelectorAll<HTMLElement>('.actions-row');
+      expect(rows.length).toBe(3);
+      expect(rows[0].querySelector('[data-action="undo"]')).not.toBeNull();
+      expect(rows[1].querySelector('[data-action="rebuild"]')).not.toBeNull();
+      expect(rows[1].querySelector('[data-action="empty"]')).not.toBeNull();
+      expect(rows[2].querySelector('[data-action="delete"]')).not.toBeNull();
+    });
+
+    it('renders no empty secondary rows when conditions are off', () => {
+      const ctx = makeCtx();
+      const { render } = createRender(ctx);
+      render(makeState({ phase: 'front', is_filtered: false }));
+      expect(ctx.root.querySelectorAll('.actions-row').length).toBe(0);
+    });
+
     it('renders a top error paragraph when error_msg is set', () => {
       const ctx = makeCtx();
       const { render } = createRender(ctx);
