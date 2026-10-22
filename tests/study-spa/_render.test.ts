@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRender } from '@spa/_render';
-import { makeCard, makeCtx, makeState } from './helpers';
+import { makeCard, makeCtx, makeState, makeUndo } from './helpers';
 
 describe('createRender', () => {
   describe('updateSyncIndicator', () => {
@@ -175,9 +175,11 @@ describe('createRender', () => {
           phase: 'back',
           is_filtered: true,
           has_cards: true,
-          undo: { label: 'Answer card', can_undo: true, can_redo: false },
+          undo: makeUndo({ label: 'Answer card' }),
         }),
       );
+      // setUndoState() patches the undo row through this anchor.
+      expect(ctx.root.querySelector('#secondary-actions')).not.toBeNull();
       const rows = ctx.root.querySelectorAll<HTMLElement>('.actions-row');
       expect(rows.length).toBe(3);
       expect(rows[0].querySelector('[data-action="undo"]')).not.toBeNull();
@@ -207,6 +209,105 @@ describe('createRender', () => {
       const { render } = createRender(ctx);
       render(makeState());
       expect(history.replaceState).toHaveBeenCalledWith(null, '', '/deck/5/spa');
+    });
+  });
+
+  describe('setUndoState', () => {
+    let originalScrollTo: typeof window.scrollTo;
+    let originalReplaceState: typeof history.replaceState;
+
+    beforeEach(() => {
+      originalScrollTo = window.scrollTo;
+      originalReplaceState = history.replaceState;
+      window.scrollTo = vi.fn();
+      history.replaceState = vi.fn();
+    });
+
+    afterEach(() => {
+      window.scrollTo = originalScrollTo;
+      history.replaceState = originalReplaceState;
+    });
+
+    it('updates the label of the existing undo button and syncs ctx.state.undo', () => {
+      const ctx = makeCtx();
+      const { render, setUndoState } = createRender(ctx);
+      render(makeState({ phase: 'back', undo: makeUndo({ label: 'Answer card' }) }));
+
+      const next = makeUndo({ label: 'Mark note' });
+      setUndoState(next);
+
+      const btn = ctx.root.querySelector<HTMLElement>('[data-action="undo"]');
+      expect(btn?.textContent).toBe("Undo 'mark note'");
+      expect(ctx.state?.undo).toBe(next);
+    });
+
+    it('renders a bare "Undo" when the label is null but can_undo is true', () => {
+      const ctx = makeCtx();
+      const { render, setUndoState } = createRender(ctx);
+      render(makeState({ phase: 'back', undo: makeUndo({ label: 'Answer card' }) }));
+
+      setUndoState(makeUndo({ label: null, can_undo: true }));
+
+      const btn = ctx.root.querySelector<HTMLElement>('[data-action="undo"]');
+      expect(btn?.textContent).toBe('Undo');
+    });
+
+    it('inserts the undo row first when there was none', () => {
+      const ctx = makeCtx();
+      const { render, setUndoState } = createRender(ctx);
+      render(
+        makeState({
+          phase: 'back',
+          is_filtered: true,
+          has_cards: true,
+          undo: makeUndo({ label: null, can_undo: false }),
+        }),
+      );
+      expect(ctx.root.querySelector('[data-action="undo"]')).toBeNull();
+
+      setUndoState(makeUndo({ label: 'Set flag' }));
+
+      const rows = ctx.root.querySelectorAll<HTMLElement>('.actions-row');
+      expect(rows.length).toBe(3);
+      const undoBtnEl = rows[0].querySelector<HTMLElement>('[data-action="undo"]');
+      expect(undoBtnEl?.textContent).toBe("Undo 'set flag'");
+      // Same construction site as the render path (makeUndoBtn): pin the
+      // attributes the delegated click handler and a11y rely on.
+      expect(undoBtnEl?.className).toBe('btn');
+      expect(undoBtnEl?.getAttribute('aria-label')).toBe('Undo');
+      expect(undoBtnEl?.getAttribute('type')).toBe('button');
+      // Deck tools and delete stay in their original order after it.
+      expect(rows[1].querySelector('[data-action="rebuild"]')).not.toBeNull();
+      expect(rows[2].querySelector('[data-action="delete"]')).not.toBeNull();
+    });
+
+    it('removes the undo row when can_undo becomes false (defensive branch)', () => {
+      const ctx = makeCtx();
+      const { render, setUndoState } = createRender(ctx);
+      render(makeState({ phase: 'back', undo: makeUndo({ label: 'Answer card' }) }));
+      expect(ctx.root.querySelector('[data-action="undo"]')).not.toBeNull();
+      // Back phase: undo row + delete row.
+      expect(ctx.root.querySelectorAll('.actions-row').length).toBe(2);
+
+      setUndoState(makeUndo({ label: null, can_undo: false }));
+
+      expect(ctx.root.querySelector('[data-action="undo"]')).toBeNull();
+      // No orphan empty .actions-row: only the delete row remains.
+      const rows = ctx.root.querySelectorAll<HTMLElement>('.actions-row');
+      expect(rows.length).toBe(1);
+      expect(rows[0].querySelector('[data-action="delete"]')).not.toBeNull();
+      expect(ctx.state?.undo.can_undo).toBe(false);
+    });
+
+    it('still syncs ctx.state.undo when #secondary-actions is absent (done screen)', () => {
+      const ctx = makeCtx();
+      const { render, setUndoState } = createRender(ctx);
+      render(makeState({ phase: 'done', card: null }));
+      expect(ctx.root.querySelector('#secondary-actions')).toBeNull();
+
+      const next = makeUndo({ label: 'Mark note' });
+      expect(() => setUndoState(next)).not.toThrow();
+      expect(ctx.state?.undo).toBe(next);
     });
   });
 

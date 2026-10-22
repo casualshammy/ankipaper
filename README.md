@@ -22,7 +22,6 @@ It uses Anki's native collection format, the official AnkiWeb sync protocol, and
 - Card review with `Again / Hard / Good / Easy` ratings and interval previews.
 - Mark and flag controls in the study toolbar.
 - Filtered (cram) deck rebuilding.
-- Best-effort sync after the last card in a deck is reviewed.
 - E-ink rendering:
   - card scripts are stripped;
   - audio, video, and unsupported embeds are removed;
@@ -35,8 +34,7 @@ It uses Anki's native collection format, the official AnkiWeb sync protocol, and
 - There is no card browser or analytics dashboard.
 - JavaScript-dependent notes may lose functionality because script tags are removed.
 - Only `.jpg`, `.jpeg`, `.png`, `.webp`, `.otf`, `.ttf`, `.woff`, and `.woff2` files are synchronized. Audio, video, JavaScript, and other media are intentionally skipped.
-- Media files above the configured per-file or collection limits are not downloaded.
-- Most rendering is server-side. The only routine client-side behavior is sync-status polling on the home page, so offline study is not supported.
+- Media files above the configured per-file size limit are not downloaded.
 - Kindle-specific CSS is deliberately simple: no color-dependent UI, animations, shadows, or complex responsive behavior.
 - AnkiWeb credentials and deck data pass through the server. Self-host the application if that is not acceptable for your threat model.
 - There is currently no in-app account deletion flow; remove an account's data directory only with the application stopped and an appropriate backup in place.
@@ -97,6 +95,7 @@ Settings are read from environment variables or `.env` using the `ANKIPAPER_` pr
 | `ANKIPAPER_MEDIA_MAX_FILE_BYTES` | `1048576` (1 MiB) | Maximum size of one media file. Larger files are skipped during media sync. |
 | `ANKIPAPER_METRICS_USERNAME` | `""` | HTTP Basic username required by the Prometheus scraper. Empty disables /metrics with HTTP 503. |
 | `ANKIPAPER_METRICS_PASSWORD` | `""` | HTTP Basic password required by the Prometheus scraper. Empty disables /metrics with HTTP 503. |
+| `ANKIPAPER_PUBLIC_URL` | `""` | Public origin (for example, `https://ankipaper.study`) used in canonical, Open Graph, and sitemap URLs. When empty, the origin is derived from the incoming request (requires `ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY=true`). |
 
 Redis is required for protected login and sync operations. If Redis is unavailable, rate limiting fails closed: login returns an error and sync is blocked rather than running without protection.
 
@@ -107,11 +106,15 @@ The Compose service binds port `8000` to loopback only. Put nginx, Cloudflare Tu
 For a reverse-proxy deployment:
 
 1. Set `ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY=true`.
-2. Make sure `X-Forwarded-Proto` header contains the real client IP. The application also understands Cloudflare's `CF-Connecting-IP` header when proxy mode is enabled.
+2. Make sure the `X-Forwarded-For` header carries the real client IP. The application also understands Cloudflare's `CF-Connecting-IP` header when proxy mode is enabled.
 
-If the same instance is also reachable over plain HTTP from the LAN (for example when Cloudflare is blocked in your region), list the LAN hostnames in `ANKIPAPER_COOKIE_INSECURE_HOSTS` so the session cookie is set without the `Secure` flag for those hosts:
+If the same instance is also reachable over plain HTTP from the LAN, list the LAN hostnames in `ANKIPAPER_COOKIE_INSECURE_HOSTS` so the session cookie is set without the `Secure` flag for those hosts:
 
 ```
 ANKIPAPER_TRUSTED_UPSTREAM_HTTPS_PROXY=true
 ANKIPAPER_COOKIE_INSECURE_HOSTS=ankipaper.lan,192.168.1.10
 ```
+
+## Monitoring
+
+Set both `ANKIPAPER_METRICS_USERNAME` and `ANKIPAPER_METRICS_PASSWORD` to expose `GET /metrics` for Prometheus scrapers. With either credential left empty, the endpoint returns `503` instead of exposing data unauthenticated.

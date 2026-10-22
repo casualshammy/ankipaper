@@ -6,7 +6,7 @@ services:
     container_name: ankipaper
     restart: unless-stopped
     ports:
-      - "0.0.0.0:8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./.data:/data
     env_file:

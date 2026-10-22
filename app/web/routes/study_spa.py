@@ -37,7 +37,7 @@ from app.sync.client import is_sync_required_or_throw
 from app.toolkit.account_toolkit import get_account_logger
 from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
-from app.web.req_types import StudyStatePayload
+from app.web.req_types import StudyFlagPayload, StudyMarkPayload, StudyStatePayload
 
 _common_logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -164,8 +164,9 @@ async def study_spa_mark_post(
   except ValueError as exc:
     logger.warning("study_spa_mark: %s", exc)
     return _bad_request(str(exc))
-  
-  return JSONResponse({"is_marked": marked})
+
+  undo = await account.run(get_undo_status)
+  return JSONResponse(StudyMarkPayload.build(is_marked=marked, undo=undo).model_dump())
 
 
 @router.post("/deck/{deck_id}/spa/flag", response_model=None)
@@ -185,8 +186,9 @@ async def study_spa_flag_post(
   except ValueError as exc:
     logger.warning("study_spa_flag: %s", exc)
     return _bad_request(str(exc))
-  
-  return JSONResponse({"flag": flag})
+
+  undo = await account.run(get_undo_status)
+  return JSONResponse(StudyFlagPayload.build(flag=flag, undo=undo).model_dump())
 
 
 @router.post("/deck/{deck_id}/spa/delete", response_model=None)

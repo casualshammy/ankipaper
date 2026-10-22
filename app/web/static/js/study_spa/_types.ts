@@ -57,10 +57,12 @@ export interface StudyOkResponse {
 
 export interface StudyMarkResponse {
   is_marked: boolean;
+  undo: StudyUndo;
 }
 
 export interface StudyFlagResponse {
   flag: number;
+  undo: StudyUndo;
 }
 
 export interface StudyApiAuthError {

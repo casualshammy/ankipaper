@@ -5,7 +5,7 @@
 import { vi } from 'vitest';
 import { createCtx } from '@spa/_state';
 import type { SpaCtx } from '@spa/_state';
-import type { StudyCard, StudySpaConfig, StudyState } from '@spa/_types';
+import type { StudyCard, StudySpaConfig, StudyState, StudyUndo } from '@spa/_types';
 
 export function makeCfg(overrides: Partial<StudySpaConfig> = {}): StudySpaConfig {
   return {
@@ -39,6 +39,15 @@ export function makeCard(overrides: Partial<StudyCard> = {}): StudyCard {
     flag: 0,
     is_marked: false,
     intervals: { again: '1m', hard: '6m', good: '10m', easy: '4d' },
+    ...overrides,
+  };
+}
+
+export function makeUndo(overrides: Partial<StudyUndo> = {}): StudyUndo {
+  return {
+    label: 'Answer card',
+    can_undo: true,
+    can_redo: false,
     ...overrides,
   };
 }

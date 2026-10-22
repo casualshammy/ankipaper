@@ -3,6 +3,8 @@
 from app.web.req_types.study_dto import (
     StudyCardIntervals,
     StudyCardPayload,
+    StudyFlagPayload,
+    StudyMarkPayload,
     StudyStatePayload,
     StudyUndoPayload,
 )
@@ -10,6 +12,8 @@ from app.web.req_types.study_dto import (
 __all__ = [
     "StudyCardIntervals",
     "StudyCardPayload",
+    "StudyFlagPayload",
+    "StudyMarkPayload",
     "StudyUndoPayload",
     "StudyStatePayload",
 ]

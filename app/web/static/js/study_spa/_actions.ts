@@ -12,12 +12,14 @@ import type {
   StudyMarkResponse,
   StudyOkResponse,
   StudyState,
+  StudyUndo,
 } from './_types';
 
 type ApiFn = <T>(method: string, path: string, formData: FormData | null) => Promise<T>;
 type RenderFn = (p: StudyState) => void;
 type OptimisticFlag = (flag: number) => void;
 type OptimisticMark = (isMarked: boolean) => void;
+type SetUndoStateFn = (undo: StudyUndo) => void;
 type ShowErrorFn = (msg: string) => void;
 type ErrorMessageFn = (e: StudyApiError) => string | null;
 
@@ -41,6 +43,7 @@ export function createActions(
   render: RenderFn,
   setMarkOptimistic: OptimisticMark,
   setFlagOptimistic: OptimisticFlag,
+  setUndoState: SetUndoStateFn,
   showErrorFn: ShowErrorFn = (m) => showError(ctx.root, m),
   errorMessageFn: ErrorMessageFn = errorMessage,
 ): SpaActions {
@@ -93,6 +96,8 @@ export function createActions(
       (r) => {
         card.is_marked = r.is_marked;
         setMarkOptimistic(r.is_marked);
+        if (r.undo) 
+          setUndoState(r.undo);
       },
       () => {
         setMarkOptimistic(!target);
@@ -113,6 +118,8 @@ export function createActions(
       (r) => {
         card.flag = r.flag;
         setFlagOptimistic(r.flag);
+        if (r.undo) 
+          setUndoState(r.undo);
       },
       () => {
         setFlagOptimistic(prev);

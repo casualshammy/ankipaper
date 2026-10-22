@@ -8,6 +8,7 @@ import type {
   StudyCardIntervals,
   StudyCardType,
   StudyState,
+  StudyUndo,
 } from './_types';
 
 export function createRender(ctx: SpaCtx) {
@@ -132,11 +133,22 @@ export function createRender(ctx: SpaCtx) {
     return el('div');
   }
 
-  // Undo button or null when undo is unavailable. Shared by the study and
-  // done screens.
-  function undoBtn(p: StudyState): HTMLElement | null {
-    if (!p.undo || !p.undo.can_undo) return null;
-    const label = p.undo.label ? 'Undo ' + p.undo.label.toLowerCase() : 'Undo';
+  /**
+   * Get the label for the undo button.
+   * Returns "Undo <op>" if a label is available, otherwise just "Undo".
+   * @param undo Undo data.
+   * @returns The label for the undo button.
+   */
+  function undoLabel(undo: StudyUndo): string {
+    return undo.label ? `Undo '${undo.label.toLowerCase()}'` : 'Undo';
+  }
+
+  /**
+   * Build the undo button element.
+   * @param label Button text.
+   * @returns The undo button element.
+   */
+  function makeUndoBtn(label: string): HTMLElement {
     return el(
       'button',
       {
@@ -147,6 +159,18 @@ export function createRender(ctx: SpaCtx) {
       },
       label,
     );
+  }
+
+  /**
+   * Undo button or null when undo is unavailable.
+   * @param p The current study state.
+   * @returns The undo button element or null if undo is unavailable.
+   */
+  function undoBtn(p: StudyState): HTMLElement | null {
+    if (!p.undo || !p.undo.can_undo) 
+      return null;
+    
+    return makeUndoBtn(undoLabel(p.undo));
   }
 
   function undoRow(p: StudyState): HTMLElement | null {
@@ -190,7 +214,7 @@ export function createRender(ctx: SpaCtx) {
   // Secondary actions split into dedicated rows: undo first, then deck
   // tools, then delete. Empty rows are not rendered.
   function renderSecondary(p: StudyState): HTMLElement {
-    const wrap = el('div');
+    const wrap = el('div', { id: 'secondary-actions' });
     const undo = undoRow(p);
     if (undo) wrap.appendChild(undo);
     const deck = deckActionsRow(p);
@@ -301,6 +325,39 @@ export function createRender(ctx: SpaCtx) {
     );
   }
 
+  /**
+   * Update the undo button state in the UI.
+   * @param undo Undo data.
+   */
+  function setUndoState(undo: StudyUndo): void {
+    if (ctx.state) 
+      ctx.state.undo = undo;
+
+    const wrap = ctx.root.querySelector<HTMLElement>('#secondary-actions');
+    if (!wrap) 
+      return;
+
+    const btn = wrap.querySelector<HTMLElement>('[data-action="undo"]');
+    if (!undo.can_undo) {
+      const row = btn ? btn.closest('.actions-row') : null;
+      if (row && row.parentNode)
+        row.parentNode.removeChild(row);
+
+      return;
+    }
+
+    const label = undoLabel(undo);
+    if (btn) {
+      btn.textContent = label;
+      return;
+    }
+
+    const row = el('div', { class: 'actions-row' });
+    row.appendChild(makeUndoBtn(label));
+    // The undo row always comes first (undo → deck tools → delete)
+    wrap.insertBefore(row, wrap.firstChild);
+  }
+
   function render(p: StudyState): void {
     ctx.state = p;
     clear(ctx.root);
@@ -333,5 +390,6 @@ export function createRender(ctx: SpaCtx) {
     updateSyncIndicator,
     setMarkOptimistic,
     setFlagOptimistic,
+    setUndoState,
   };
 }

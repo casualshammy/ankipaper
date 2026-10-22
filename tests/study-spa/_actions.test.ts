@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createActions } from '@spa/_actions';
-import { makeApiMock, makeCard, makeCtx, makeState } from './helpers';
+import { makeApiMock, makeCard, makeCtx, makeState, makeUndo } from './helpers';
 
 function makeActionDeps() {
   const ctx = makeCtx();
@@ -8,8 +8,9 @@ function makeActionDeps() {
   const render = vi.fn();
   const setMarkOptimistic = vi.fn();
   const setFlagOptimistic = vi.fn();
-  const actions = createActions(ctx, api, render, setMarkOptimistic, setFlagOptimistic);
-  return { ctx, api, render, setMarkOptimistic, setFlagOptimistic, actions };
+  const setUndoState = vi.fn();
+  const actions = createActions(ctx, api, render, setMarkOptimistic, setFlagOptimistic, setUndoState);
+  return { ctx, api, render, setMarkOptimistic, setFlagOptimistic, setUndoState, actions };
 }
 
 describe('createActions', () => {
@@ -41,9 +42,10 @@ describe('createActions', () => {
   describe('onMark', () => {
     it('applies optimistic state, sends POST, and confirms with server response', async () => {
       const card = makeCard({ is_marked: false });
-      const { ctx, api, actions, setMarkOptimistic, render } = makeActionDeps();
+      const { ctx, api, actions, setMarkOptimistic, setUndoState, render } = makeActionDeps();
       ctx.state = makeState({ card });
-      api.mockResolvedValueOnce({ is_marked: true });
+      const undo = makeUndo({ label: 'Mark note' });
+      api.mockResolvedValueOnce({ is_marked: true, undo });
 
       await actions.onMark();
 
@@ -53,12 +55,13 @@ describe('createActions', () => {
       expect(setMarkOptimistic).toHaveBeenNthCalledWith(2, true);
       expect(api).toHaveBeenCalledWith('POST', '/deck/42/spa/mark', expect.any(FormData));
       expect(card.is_marked).toBe(true);
+      expect(setUndoState).toHaveBeenCalledWith(undo);
       expect(render).not.toHaveBeenCalled();
     });
 
     it('rolls back on api error', async () => {
       const card = makeCard({ is_marked: false });
-      const { ctx, api, actions, setMarkOptimistic } = makeActionDeps();
+      const { ctx, api, actions, setMarkOptimistic, setUndoState } = makeActionDeps();
       ctx.state = makeState({ card });
       api.mockRejectedValueOnce(new Error('network'));
 
@@ -67,6 +70,20 @@ describe('createActions', () => {
       expect(setMarkOptimistic).toHaveBeenNthCalledWith(1, true);
       expect(setMarkOptimistic).toHaveBeenNthCalledWith(2, false);
       expect(card.is_marked).toBe(false);
+      // Server state is unchanged on rollback: no undo patch.
+      expect(setUndoState).not.toHaveBeenCalled();
+    });
+
+    it('tolerates an old-shape response without an undo block', async () => {
+      const card = makeCard({ is_marked: false });
+      const { ctx, api, actions, setUndoState } = makeActionDeps();
+      ctx.state = makeState({ card });
+      api.mockResolvedValueOnce({ is_marked: true });
+
+      await expect(actions.onMark()).resolves.not.toThrow();
+
+      expect(card.is_marked).toBe(true);
+      expect(setUndoState).not.toHaveBeenCalled();
     });
 
     it('no-ops when there is no current card', async () => {
@@ -80,9 +97,10 @@ describe('createActions', () => {
   describe('onFlag', () => {
     it('toggles a clicked flag (sends 0 to clear)', async () => {
       const card = makeCard({ flag: 0 });
-      const { ctx, api, actions, setFlagOptimistic } = makeActionDeps();
+      const { ctx, api, actions, setFlagOptimistic, setUndoState } = makeActionDeps();
       ctx.state = makeState({ card });
-      api.mockResolvedValueOnce({ flag: 2 });
+      const undo = makeUndo({ label: 'Set flag' });
+      api.mockResolvedValueOnce({ flag: 2, undo });
 
       await actions.onFlag(2);
 
@@ -90,13 +108,14 @@ describe('createActions', () => {
       const body = (api.mock.calls[0][2] as FormData);
       expect(body.get('flag')).toBe('2');
       expect(card.flag).toBe(2);
+      expect(setUndoState).toHaveBeenCalledWith(undo);
     });
 
     it('clicking the same flag clears it (sends 0)', async () => {
       const card = makeCard({ flag: 2 });
       const { ctx, api, actions } = makeActionDeps();
       ctx.state = makeState({ card });
-      api.mockResolvedValueOnce({ flag: 0 });
+      api.mockResolvedValueOnce({ flag: 0, undo: makeUndo({ label: 'Clear flag' }) });
 
       await actions.onFlag(2);
 
@@ -107,7 +126,7 @@ describe('createActions', () => {
 
     it('rolls back on api error', async () => {
       const card = makeCard({ flag: 0 });
-      const { ctx, api, actions, setFlagOptimistic } = makeActionDeps();
+      const { ctx, api, actions, setFlagOptimistic, setUndoState } = makeActionDeps();
       ctx.state = makeState({ card });
       api.mockRejectedValueOnce(new Error('fail'));
 
@@ -116,6 +135,8 @@ describe('createActions', () => {
       expect(setFlagOptimistic).toHaveBeenNthCalledWith(1, 1);
       expect(setFlagOptimistic).toHaveBeenNthCalledWith(2, 0);
       expect(card.flag).toBe(0);
+      // Server state is unchanged on rollback: no undo patch.
+      expect(setUndoState).not.toHaveBeenCalled();
     });
   });
 
@@ -218,7 +239,7 @@ describe('createActions', () => {
         body: { error_msg: 'cannot delete right now' },
       });
       // Re-create with the showError override.
-      const a2 = createActions(ctx, api, vi.fn(), vi.fn(), vi.fn(), showErrorFn);
+      const a2 = createActions(ctx, api, vi.fn(), vi.fn(), vi.fn(), vi.fn(), showErrorFn);
       await a2.onDeleteConfirm();
       expect(showErrorFn).toHaveBeenCalledWith('cannot delete right now');
     });
@@ -267,7 +288,7 @@ describe('createActions', () => {
     it('onRebuild shows error on failure', async () => {
       const showErrorFn = vi.fn();
       const { ctx, api } = makeActionDeps();
-      const actions = createActions(ctx, api, vi.fn(), vi.fn(), vi.fn(), showErrorFn);
+      const actions = createActions(ctx, api, vi.fn(), vi.fn(), vi.fn(), vi.fn(), showErrorFn);
       api.mockRejectedValueOnce({ body: { error_msg: 'busy' } });
       await actions.onRebuild();
       expect(showErrorFn).toHaveBeenCalledWith('busy');
@@ -285,7 +306,7 @@ describe('createActions', () => {
     it('onEmpty falls back to "empty failed" when error has no error_msg', async () => {
       const showErrorFn = vi.fn();
       const { ctx, api } = makeActionDeps();
-      const actions = createActions(ctx, api, vi.fn(), vi.fn(), vi.fn(), showErrorFn);
+      const actions = createActions(ctx, api, vi.fn(), vi.fn(), vi.fn(), vi.fn(), showErrorFn);
       api.mockRejectedValueOnce({ body: {} });
       await actions.onEmpty();
       expect(showErrorFn).toHaveBeenCalledWith('empty failed');

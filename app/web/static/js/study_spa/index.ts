@@ -43,6 +43,7 @@ import type { StudyApiError, StudySpaConfig, StudyState } from './_types';
     renderApi.render,
     renderApi.setMarkOptimistic,
     renderApi.setFlagOptimistic,
+    renderApi.setUndoState,
   );
   attachEvents(ctx, actions);
 

@@ -151,5 +151,33 @@ class StudyStatePayload(BaseModel):
       return "review"
     if card.card_type_native in (anki.collection.CARD_TYPE_LRN, anki.collection.CARD_TYPE_RELEARNING):
       return "learning"
-    
+
     return "new"
+
+
+class StudyMarkPayload(BaseModel):
+  """Response body of marking a study card."""
+
+  is_marked: bool
+  undo: StudyUndoPayload
+
+  @classmethod
+  def build(cls, *, is_marked: bool, undo: UndoInfo) -> StudyMarkPayload:
+    return cls(
+      is_marked=is_marked,
+      undo=StudyUndoPayload.from_undo_info(undo),
+    )
+
+
+class StudyFlagPayload(BaseModel):
+  """Response body of flagging a study card."""
+
+  flag: int
+  undo: StudyUndoPayload
+
+  @classmethod
+  def build(cls, *, flag: int, undo: UndoInfo) -> StudyFlagPayload:
+    return cls(
+      flag=flag,
+      undo=StudyUndoPayload.from_undo_info(undo),
+    )
