@@ -3,8 +3,10 @@
 // that other modules depend on.
 
 import { vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { createCtx } from '@spa/_state';
 import type { SpaCtx } from '@spa/_state';
+import type { ApiFn } from '@spa/_actions';
 import type { StudyCard, StudySpaConfig, StudyState, StudyUndo } from '@spa/_types';
 
 export function makeCfg(overrides: Partial<StudySpaConfig> = {}): StudySpaConfig {
@@ -83,8 +85,14 @@ export async function flushMicrotasks(): Promise<void> {
 // `createActions` takes the api as an injection point, so tests can pass
 // a vi.fn that returns whatever the test wants. `errorMessage` is also
 // injected but defaults to the real one.
-export type ApiMock = ReturnType<typeof vi.fn>;
+//
+// vitest's Mock<> erases the generic call signature of ApiFn, so the mock
+// type is an intersection that keeps both the mock methods and ApiFn itself.
+export type ApiMock = MockInstance<ApiFn> & ApiFn;
 
 export function makeApiMock(impl?: ApiMock): ApiMock {
-  return impl ?? vi.fn(() => Promise.resolve({} as unknown));
+  if (impl) {
+    return impl;
+  }
+  return vi.fn<ApiFn>(() => Promise.resolve({} as never)) as unknown as ApiMock;
 }

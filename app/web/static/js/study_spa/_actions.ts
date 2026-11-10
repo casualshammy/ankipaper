@@ -15,7 +15,7 @@ import type {
   StudyUndo,
 } from './_types';
 
-type ApiFn = <T>(method: string, path: string, formData: FormData | null) => Promise<T>;
+export type ApiFn = <T>(method: string, path: string, formData: FormData | null) => Promise<T>;
 type RenderFn = (p: StudyState) => void;
 type OptimisticFlag = (flag: number) => void;
 type OptimisticMark = (isMarked: boolean) => void;
