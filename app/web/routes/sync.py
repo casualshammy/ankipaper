@@ -373,6 +373,13 @@ def _fail_sync(
     For ``error == "auth_expired"`` the stored hostKey is deleted.
     """
 
+    detail = " ".join((error or "").split())
+    logger.error(
+        "Sync failed [%s] (phase=%s): %s",
+        account.id,
+        state.phase or "collection",
+        detail or "unknown error",
+    )
     state.status = "error"
     state.phase = None
     state.error = _safe_error_code(error)

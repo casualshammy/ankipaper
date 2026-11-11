@@ -38,6 +38,7 @@ It uses Anki's native collection format, the official AnkiWeb sync protocol, and
 - Kindle-specific CSS is deliberately simple: no color-dependent UI, animations, shadows, or complex responsive behavior.
 - AnkiWeb credentials and deck data pass through the server. Self-host the application if that is not acceptable for your threat model.
 - There is currently no in-app account deletion flow; remove an account's data directory only with the application stopped and an appropriate backup in place.
+- The scheduler day boundary (Anki Desktop's global "next day starts at" preference) is applied in the server's timezone, which is UTC by default: with a 4 AM rollover, new-day reviews unlock at 4:00 UTC. Anki treats devices in different timezones as a normal travel scenario, so scheduling data stays consistent - users far from UTC simply see the day roll over at a different local time. A single-timezone self-hosted instance can add `TZ=Europe/Moscow` (any IANA name) to `.env` and restart to shift the boundary to local time.
 
 ## Legal
 

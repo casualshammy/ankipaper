@@ -110,6 +110,7 @@ def perform_sync(col: Collection, host_key: str, endpoint: str | None = None) ->
 
     auth = make_auth(host_key, endpoint)
 
+    logger.info("Checking AnkiWeb sync status")
     try:
         status = col.sync_status(auth)
     except BackendError as exc:
