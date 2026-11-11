@@ -11,23 +11,23 @@ requires-python = ">=3.11"
 license = { text = "AGPL-3.0-or-later" }
 authors = [{ name = "AnkiPaper" }]
 dependencies = [
-    "fastapi>=0.110",
-    "uvicorn[standard]>=0.27",
-    "jinja2>=3.1",
-    "pillow>=12.3",
-    "python-multipart>=0.0.9",
-    "itsdangerous>=2.1",
-    "pydantic-settings>=2.2",
-    "cryptography>=42",
-    "zstandard>=0.23",
-    "anki>=25.6",
-    "redis>=5.0",
-    "prometheus-client>=0.20",
+    "fastapi>=0.162.2",
+    "uvicorn[standard]>=0.54.0",
+    "jinja2>=3.1.6",
+    "pillow>=13.0.0",
+    "python-multipart>=0.0.33",
+    "itsdangerous>=2.2.0",
+    "pydantic-settings>=2.16.2",
+    "cryptography>=50.0.2",
+    "zstandard>=0.25.0",
+    "anki>=26.9.4",
+    "redis>=8.1.0",
+    "prometheus-client>=0.26.0",
     "psutil>=7.2.2",
 ]
 
 [project.optional-dependencies]
-dev = ["mypy>=2.3.0", "ruff>=0.16.2", "types-psutil>=7.2.2"]
+dev = ["mypy>=2.4.1", "ruff>=0.17.4", "types-psutil>=7.2.2"]
 
 [tool.setuptools.packages.find]
 where = ["."]
