@@ -1,0 +1,3 @@
+[submodule "build_common"]
+	path = build_common
+	url = https://github.com/casualshammy/build_common.git
