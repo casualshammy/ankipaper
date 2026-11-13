@@ -66,7 +66,7 @@ export interface StudyFlagResponse {
 }
 
 export interface StudyApiAuthError {
-  message: 'unauth' | 'csrf' | 'spa-disabled';
+  message: 'unauth' | 'csrf' | 'not-found';
 }
 
 export interface StudyApiBadError {

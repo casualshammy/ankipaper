@@ -1,4 +1,4 @@
-"""Card review routes."""
+"""Home page route (deck list)."""
 
 from __future__ import annotations
 
@@ -6,36 +6,15 @@ import asyncio
 import logging
 import time
 from math import ceil
-from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.domain.scheduler import (
-    DeckStats,
-    Rating,
-    answer_card,
-    card_deck_matches_or_descends,
-    deck_is_filtered,
-    delete_note_by_card,
-    empty_filtered_deck,
-    get_card_intervals,
-    get_card_view,
-    get_deck_card_count,
-    get_deck_due_breakdown,
-    get_next_card,
-    get_undo_status,
-    list_deck_stats,
-    rebuild_filtered_deck,
-    set_card_flag,
-    set_card_marked,
-    undo_last_op,
-)
+from app.domain.scheduler import DeckStats, list_deck_stats
 from app.storage.account import Account
 from app.sync.client import is_sync_required_or_throw
 from app.toolkit.account_toolkit import get_account_logger
-from app.web.csrf import require_csrf
 from app.web.deps import get_current_account_optional
 
 _common_logger = logging.getLogger(__name__)
@@ -48,11 +27,9 @@ async def home(
     sync_ok: str | None = None,
     sync_error: str | None = None,
     rebuild_ok: int | None = None,
-    rebuild_error: str | None = None,
     empty_ok: int | None = None,
-    empty_error: str | None = None,
     account: Account | None = Depends(get_current_account_optional),
-) -> HTMLResponse | RedirectResponse:
+) -> HTMLResponse:
     """Renders the landing page (anonymous) or the list of decks."""
 
     templates: Jinja2Templates = request.app.state.templates
@@ -113,9 +90,7 @@ async def home(
             "sync_ok": sync_ok,
             "sync_error": sync_error,
             "rebuild_ok": rebuild_ok,
-            "rebuild_error": rebuild_error,
             "empty_ok": empty_ok,
-            "empty_error": empty_error,
             "sync_required": is_sync_required,
         },
     )
@@ -137,262 +112,6 @@ async def home(
     return response
 
 
-@router.post("/deck/{deck_id}/rebuild", response_model=None)
-async def deck_rebuild_post(
-    deck_id: int,
-    account: Account | None = Depends(get_current_account_optional),
-    _: None = Depends(require_csrf),
-) -> RedirectResponse:
-    """Rebuilds a filtered deck using its search terms."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-
-    try:
-        count = await account.run(rebuild_filtered_deck, deck_id)
-    except Exception as exc:
-        logger.warning("rebuild_filtered_deck failed: deck_id=%s err=%s", deck_id, exc)
-        return RedirectResponse(
-            f"/?rebuild_error={exc}", status_code=303
-        )
-    logger.info("rebuild_filtered_deck: deck_id=%s count=%s", deck_id, count)
-    return RedirectResponse(f"/?rebuild_ok={count}", status_code=303)
-
-
-@router.post("/deck/{deck_id}/empty", response_model=None)
-async def deck_empty_post(
-    deck_id: int,
-    account: Account | None = Depends(get_current_account_optional),
-    _: None = Depends(require_csrf),
-) -> RedirectResponse:
-    """Returns all cards from a filtered deck to their home decks."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-
-    try:
-        count = await account.run(empty_filtered_deck, deck_id)
-    except Exception as exc:
-        logger.warning("empty_filtered_deck failed: deck_id=%s err=%s", deck_id, exc)
-        return RedirectResponse(f"/?empty_error={exc}", status_code=303)
-    logger.info("empty_filtered_deck: deck_id=%s count=%s", deck_id, count)
-    return RedirectResponse(f"/?empty_ok={count}", status_code=303)
-
-
-@router.get("/deck/{deck_id}/study", response_model=None)
-async def study_get(
-    request: Request,
-    deck_id: int,
-    error_msg: str = Query(""),
-    account: Account | None = Depends(get_current_account_optional),
-) -> HTMLResponse | RedirectResponse:
-    """Shows the front of the due card."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-
-    return await _get_study_get_html(request, account, deck_id, error_msg, logger)
-
-
-@router.post("/deck/{deck_id}/study", response_model=None)
-async def study_post(
-    request: Request,
-    deck_id: int,
-    reveal_card_id: int = Form(gt=0),
-    account: Account | None = Depends(get_current_account_optional),
-    _: None = Depends(require_csrf),
-) -> HTMLResponse | RedirectResponse:
-    """Shows the back of the due card."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-
-    return await _get_reveal_post_html(request, account, deck_id, reveal_card_id, "", logger)
-
-
-@router.post("/deck/{deck_id}/answer", response_model=None)
-async def answer_post(
-    deck_id: int,
-    card_id: int = Form(gt = 0),
-    rate: Rating = Form(gt = 0),
-    account: Account | None = Depends(get_current_account_optional),
-    _: None = Depends(require_csrf),
-) -> RedirectResponse:
-    """Handles Answer within a review session."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-
-    outcome = await account.run_extended(answer_card, card_id, rate, deck_id=deck_id)
-    if outcome.stale:
-        logger.info(
-            "answer_post: stale answer card_id=%s deck_id=%s rate=%s; "
-            "redirecting to current head",
-            card_id,
-            deck_id,
-            int(rate),
-        )
-    
-    return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-
-
-@router.post("/deck/{deck_id}/undo", response_model=None)
-async def undo_post(
-    deck_id: int,
-    account: Account | None = Depends(get_current_account_optional),
-    _: None = Depends(require_csrf),
-) -> RedirectResponse:
-    """Undo the last review action and return to the study page."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    await account.run(undo_last_op)
-    return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-
-
-@router.get("/deck/{deck_id}/delete-note", response_model=None)
-async def delete_note_get(
-    request: Request,
-    deck_id: int,
-    card_id: int = Query(gt=0),
-    account: Account | None = Depends(get_current_account_optional),
-) -> HTMLResponse | RedirectResponse:
-    """Render the delete-confirmation page for the given card."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-
-    view = await account.run(get_card_view, card_id, None)
-    if view is None:
-        err_msg = f"Card '{card_id}' does not exist"
-        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
-
-    true_deck = await account.run(card_deck_matches_or_descends, view.deck_id, deck_id)
-    if (not true_deck):
-        err = f"delete_note_get: invalid deck id '{deck_id}', card's deck id: '{view.deck_id}'"
-        logger.warning(err)
-        err_msg = f"Card '{card_id}' does not belong to the current deck '{deck_id}'"
-        return RedirectResponse(f"/deck/{deck_id}/study?error_msg={quote(err_msg, safe='')}", status_code=303)
-
-    is_sync_required = await _is_sync_required(logger, account)
-
-    templates: Jinja2Templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "delete_card_confirm.html",
-        {
-            "deck_id": deck_id,
-            "card": view,
-            "sync_required": is_sync_required,
-        },
-    )
-
-
-@router.post("/deck/{deck_id}/delete-note", response_model=None)
-async def delete_note_post(
-    deck_id: int,
-    card_id: int = Form(gt=0),
-    account: Account | None = Depends(get_current_account_optional),
-    _: None = Depends(require_csrf),
-) -> RedirectResponse:
-    """Delete the note behind the card and return to the study page."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-
-    try:
-        await account.run(delete_note_by_card, deck_id, card_id)
-        logger.info("delete_note_post: card_id=%s deck_id=%s deleted", card_id, deck_id)
-        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-    except ValueError as exc:
-        exc_str = str(exc)
-        logger.warning(
-            "delete_note_post: card_id=%s deck_id=%s failed: %s",
-            card_id,
-            deck_id,
-            exc_str,
-        )
-        return RedirectResponse(
-            f"/deck/{deck_id}/study?error_msg={quote(exc_str, safe='')}",
-            status_code=303,
-        )
-
-
-@router.post("/deck/{deck_id}/set-card-flag", response_model=None)
-async def set_card_flag_post(
-    request: Request,
-    deck_id: int,
-    card_id: int = Form(gt = 0),
-    flag: int = Form(),
-    back_card: bool = Form(),
-    account: Account | None = Depends(get_current_account_optional),
-    _: None = Depends(require_csrf),
-) -> HTMLResponse | RedirectResponse:
-    """Sets the user flag (0..4) on a card."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-    error_msg = ""
-
-    try:
-        await account.run(set_card_flag, card_id, flag)
-    except ValueError as exc:
-        error_msg = str(exc)
-        logger.warning("set-card-flag: %s", error_msg)
-
-    if back_card:
-        return await _get_reveal_post_html(request, account, deck_id, card_id, error_msg, logger)
-    else:
-        return await _get_study_get_html(request, account, deck_id, error_msg, logger)
-
-        
-@router.post("/deck/{deck_id}/set-card-mark", response_model=None)
-async def set_card_mark_post(
-    request: Request,
-    deck_id: int,
-    card_id: int = Form(gt = 0),
-    marked: bool = Form(),
-    back_card: bool = Form(),
-    account: Account | None = Depends(get_current_account_optional),
-    _: None = Depends(require_csrf),
-) -> HTMLResponse | RedirectResponse:
-    """Sets the "marked" (star) state on a card."""
-
-    if account is None:
-        return RedirectResponse("/login", status_code=303)
-
-    logger = get_account_logger(_common_logger, account.id)
-    error_msg = ""
-    
-    try:
-        await account.run(set_card_marked, card_id, marked)
-    except ValueError as exc:
-        error_msg = str(exc)
-        logger.warning("set-card-mark: %s", error_msg)
-
-    if back_card:
-        return await _get_reveal_post_html(request, account, deck_id, card_id, error_msg, logger)
-    else:
-        return await _get_study_get_html(request, account, deck_id, error_msg, logger)
-
-
 async def _is_sync_required(
     logger: logging.Logger,
     account: Account,
@@ -406,104 +125,3 @@ async def _is_sync_required(
     except Exception as ex:
         logger.error(f"_is_sync_required failed: {ex}")
         return True
-
-
-async def _session_done(
-    request: Request,
-    account: Account,
-    deck_id: int,
-) -> HTMLResponse:
-    """Renders the session-complete page."""
-
-    logger = get_account_logger(_common_logger, account.id)
-
-    templates: Jinja2Templates = request.app.state.templates
-    is_filtered = await account.run(deck_is_filtered, deck_id)
-    has_cards = bool(await account.run(get_deck_card_count, deck_id))
-    undo = await account.run(get_undo_status)
-    is_sync_required = await _is_sync_required(logger, account)
-    return templates.TemplateResponse(
-        request,
-        "study_done.html",
-        {
-            "deck_id": deck_id,
-            "is_filtered": is_filtered,
-            "has_cards": has_cards,
-            "undo": undo,
-            "sync_required": is_sync_required
-        },
-    )
-
-
-async def _get_study_get_html(
-    request: Request, 
-    account: Account, 
-    deck_id: int, 
-    error_msg: str,
-    logger: logging.Logger) -> HTMLResponse:
-    """Renders the study front page for a deck."""
-    
-    view = await account.run_extended(get_next_card, deck_id)
-    if view is None:
-        return await _session_done(request, account, deck_id)
-
-    breakdown = await account.run(get_deck_due_breakdown, deck_id)
-    is_filtered = await account.run(deck_is_filtered, deck_id)
-    has_cards = bool(await account.run(get_deck_card_count, deck_id))
-    undo = await account.run(get_undo_status)
-    is_sync_required = await _is_sync_required(logger, account)
-    
-    templates: Jinja2Templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "study_front.html",
-        {
-            "deck_id": deck_id,
-            "is_filtered": is_filtered,
-            "has_cards": has_cards,
-            "card": view,
-            "remaining": breakdown.total,
-            "remaining_new": breakdown.new,
-            "remaining_learning": breakdown.learning,
-            "remaining_review": breakdown.review,
-            "undo": undo,
-            "error_msg": error_msg,
-            "sync_required": is_sync_required
-        },
-    )
-
-
-async def _get_reveal_post_html(
-    request: Request, 
-    account: Account, 
-    deck_id: int, 
-    card_id: int, 
-    error_msg: str,
-    logger: logging.Logger) -> HTMLResponse | RedirectResponse:
-    """Renders the reveal page for a card, or redirects if the card is not found."""
-
-    card_intervals = await account.run(get_card_intervals, card_id)
-
-    view = await account.run(get_card_view, card_id, card_intervals)
-    if view is None:
-        return RedirectResponse(f"/deck/{deck_id}/study", status_code=303)
-
-    breakdown = await account.run(get_deck_due_breakdown, deck_id)
-    is_sync_required = await _is_sync_required(logger, account)
-    
-    templates: Jinja2Templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "study_back.html",
-        {
-            "back_card": True,
-            "deck_id": deck_id,
-            "card": view,
-            "remaining": breakdown.total,
-            "remaining_new": breakdown.new,
-            "remaining_learning": breakdown.learning,
-            "remaining_review": breakdown.review,
-            "error_msg": error_msg,
-            "sync_required": is_sync_required
-        },
-    )

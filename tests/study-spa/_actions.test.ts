@@ -53,7 +53,7 @@ describe('createActions', () => {
       expect(setMarkOptimistic).toHaveBeenNthCalledWith(1, true);
       // Second call: confirm with server response
       expect(setMarkOptimistic).toHaveBeenNthCalledWith(2, true);
-      expect(api).toHaveBeenCalledWith('POST', '/deck/42/spa/mark', expect.any(FormData));
+      expect(api).toHaveBeenCalledWith('POST', '/deck/42/mark', expect.any(FormData));
       expect(card.is_marked).toBe(true);
       expect(setUndoState).toHaveBeenCalledWith(undo);
       expect(render).not.toHaveBeenCalled();
@@ -149,7 +149,7 @@ describe('createActions', () => {
 
       await actions.onAnswer(3);
 
-      expect(api).toHaveBeenCalledWith('POST', '/deck/42/spa/answer', expect.any(FormData));
+      expect(api).toHaveBeenCalledWith('POST', '/deck/42/answer', expect.any(FormData));
       const body = api.mock.calls[0][2] as FormData;
       expect(body.get('rate')).toBe('3');
       expect(render).toHaveBeenCalledWith(newState);
@@ -162,7 +162,7 @@ describe('createActions', () => {
       const newState = makeState();
       api.mockResolvedValueOnce(newState);
       await actions.onUndo();
-      expect(api).toHaveBeenCalledWith('POST', '/deck/42/spa/undo', null);
+      expect(api).toHaveBeenCalledWith('POST', '/deck/42/undo', null);
       expect(render).toHaveBeenCalledWith(newState);
     });
   });

@@ -2,8 +2,8 @@
 JSON-SPA study routes.
 
 The SPA client is a small vanilla-JS application served by
-``GET /deck/{deck_id}/spa``; it talks back to the JSON endpoints
-listed below. No legacy template is touched by this module.
+``GET /deck/{deck_id}``; it talks back to the JSON endpoints
+listed below.
 """
 
 from __future__ import annotations
@@ -11,9 +11,10 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app import __version__
 from app.domain.scheduler import (
   AnswerOutcome,
   Rating,
@@ -47,16 +48,16 @@ router = APIRouter()
 # HTML page
 # ---------------------------------------------------------------------------
 
-@router.get("/deck/{deck_id}/spa", response_model=None)
+@router.get("/deck/{deck_id}", response_model=None)
 async def study_spa_get(
   request: Request,
   deck_id: int,
   account: Account | None = Depends(get_current_account_optional),
-) -> HTMLResponse | JSONResponse:
-  """Render the SPA shell. JS does the rest via /spa/state."""
+) -> HTMLResponse | RedirectResponse:
+  """Render the SPA shell. JS does the rest via /deck/{id}/state."""
 
   if account is None:
-    return JSONResponse({"redirect": "/login"}, status_code=401)
+    return RedirectResponse("/login", status_code=303)
   
   is_filtered = await _is_filtered(account, deck_id)
   templates: Jinja2Templates = request.app.state.templates
@@ -65,16 +66,35 @@ async def study_spa_get(
     "study_spa.html",
     {
       "deck_id": deck_id, 
-      "is_filtered": is_filtered
+      "is_filtered": is_filtered,
+      "bundle_v": __version__,
     },
   )
+
+
+@router.get("/deck/{deck_id}/study", response_model=None)
+async def study_legacy_redirect(
+    deck_id: int,
+) -> RedirectResponse:
+    """Redirects the legacy full-page study URL to the SPA shell."""
+
+    return RedirectResponse(f"/deck/{deck_id}", status_code=303)
+
+
+@router.get("/deck/{deck_id}/spa", response_model=None)
+async def study_spa_legacy_redirect(
+    deck_id: int,
+) -> RedirectResponse:
+    """Redirects the former SPA URL (/deck/{id}/spa) to the shell."""
+
+    return RedirectResponse(f"/deck/{deck_id}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
 # JSON endpoints
 # ---------------------------------------------------------------------------
 
-@router.get("/deck/{deck_id}/spa/state", response_model=None)
+@router.get("/deck/{deck_id}/state", response_model=None)
 async def study_spa_state_get(
     deck_id: int,
     account: Account | None = Depends(get_current_account_optional),
@@ -89,7 +109,7 @@ async def study_spa_state_get(
   return JSONResponse(payload.model_dump())
 
 
-@router.post("/deck/{deck_id}/spa/reveal", response_model=None)
+@router.post("/deck/{deck_id}/reveal", response_model=None)
 async def study_spa_reveal_post(
     deck_id: int,
     card_id: int = Form(gt=0),
@@ -107,7 +127,7 @@ async def study_spa_reveal_post(
   return JSONResponse(payload.model_dump())
 
 
-@router.post("/deck/{deck_id}/spa/answer", response_model=None)
+@router.post("/deck/{deck_id}/answer", response_model=None)
 async def study_spa_answer_post(
   deck_id: int,
   card_id: int = Form(gt=0),
@@ -132,7 +152,7 @@ async def study_spa_answer_post(
   return JSONResponse(payload.model_dump())
 
 
-@router.post("/deck/{deck_id}/spa/undo", response_model=None)
+@router.post("/deck/{deck_id}/undo", response_model=None)
 async def study_spa_undo_post(
   deck_id: int,
   account: Account | None = Depends(get_current_account_optional),
@@ -147,7 +167,7 @@ async def study_spa_undo_post(
   return JSONResponse(payload.model_dump())
 
 
-@router.post("/deck/{deck_id}/spa/mark", response_model=None)
+@router.post("/deck/{deck_id}/mark", response_model=None)
 async def study_spa_mark_post(
   deck_id: int,
   card_id: int = Form(gt=0),
@@ -169,7 +189,7 @@ async def study_spa_mark_post(
   return JSONResponse(StudyMarkPayload.build(is_marked=marked, undo=undo).model_dump())
 
 
-@router.post("/deck/{deck_id}/spa/flag", response_model=None)
+@router.post("/deck/{deck_id}/flag", response_model=None)
 async def study_spa_flag_post(
   deck_id: int,
   card_id: int = Form(gt=0),
@@ -191,7 +211,7 @@ async def study_spa_flag_post(
   return JSONResponse(StudyFlagPayload.build(flag=flag, undo=undo).model_dump())
 
 
-@router.post("/deck/{deck_id}/spa/delete", response_model=None)
+@router.post("/deck/{deck_id}/delete", response_model=None)
 async def study_spa_delete_post(
   deck_id: int,
   card_id: int = Form(gt=0),
@@ -213,7 +233,7 @@ async def study_spa_delete_post(
   return JSONResponse(payload.model_dump())
 
 
-@router.post("/deck/{deck_id}/spa/rebuild", response_model=None)
+@router.post("/deck/{deck_id}/rebuild", response_model=None)
 async def study_spa_rebuild_post(
   deck_id: int,
   account: Account | None = Depends(get_current_account_optional),
@@ -233,7 +253,7 @@ async def study_spa_rebuild_post(
   return JSONResponse({"ok": True, "count": count})
 
 
-@router.post("/deck/{deck_id}/spa/empty", response_model=None)
+@router.post("/deck/{deck_id}/empty", response_model=None)
 async def study_spa_empty_post(
   deck_id: int,
   account: Account | None = Depends(get_current_account_optional),

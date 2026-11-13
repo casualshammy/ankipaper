@@ -44,8 +44,8 @@ export function createApi(ctx: SpaCtx) {
         throw { message: 'csrf' };
       }
       if (r.status === 404) {
-        location.assign('/deck/' + ctx.cfg.deckId + '/study');
-        throw { message: 'spa-disabled' };
+        showFatal(ctx.root, 'Deck not found');
+        throw { message: 'not-found' };
       }
       if (!r.ok) {
         return r

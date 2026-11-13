@@ -107,12 +107,13 @@ describe('createApi', () => {
     }
   });
 
-  it('on 404 redirects to the legacy study URL, throws "spa-disabled"', async () => {
+  it('on 404 shows fatal "Deck not found" and throws "not-found"', async () => {
     fetchMock.mockResolvedValueOnce({ status: 404, ok: false, json: () => Promise.resolve({}) });
     const ctx = makeCtx({ deckId: 99 });
     const api = createApi(ctx);
-    await expect(api('GET', '/foo')).rejects.toMatchObject({ message: 'spa-disabled' });
-    expect(assignMock).toHaveBeenCalledWith('/deck/99/study');
+    await expect(api('GET', '/foo')).rejects.toMatchObject({ message: 'not-found' });
+    expect(ctx.root.querySelector('.error')).not.toBeNull();
+    expect(ctx.root.querySelector('.error')?.textContent).toContain('Deck not found');
   });
 
   it('on 5xx with error_msg throws StudyApiBadError carrying the message', async () => {

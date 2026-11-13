@@ -30,14 +30,8 @@
   {% if rebuild_ok is not none %}
     <p class="notice">Rebuilt. {{ rebuild_ok }} card(s) in deck.</p>
   {% endif %}
-  {% if rebuild_error %}
-    <p class="error">Rebuild error: {{ rebuild_error }}</p>
-  {% endif %}
   {% if empty_ok is not none %}
     <p class="notice">Deck emptied. {{ empty_ok }} card(s) returned to their home decks.</p>
-  {% endif %}
-  {% if empty_error %}
-    <p class="error">Empty error: {{ empty_error }}</p>
   {% endif %}
 
   {% if not has_collection %}
@@ -62,7 +56,7 @@
       <tbody>
         {% for d in decks %}
           <tr>
-            <td><a class="deck-link" href="/deck/{{ d.deck_id }}/{% if study_spa_enabled %}spa{% else %}study{% endif %}">{{ d.name }}</a></td>
+            <td><a class="deck-link" href="/deck/{{ d.deck_id }}">{{ d.name }}</a></td>
             {{ cell_num(d.new) }}
             {{ cell_num(d.learning) }}
             {{ cell_num(d.review) }}

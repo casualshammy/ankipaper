@@ -82,7 +82,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.templates.env.globals["csrf_token"] = csrf_token_global
     app.state.templates.env.globals["show_privacy_policy"] = settings.show_privacy_policy
     app.state.templates.env.globals["contacts_email"] = settings.contacts_email
-    app.state.templates.env.globals["study_spa_enabled"] = settings.study_spa_enabled
 
     from app.toolkit import ANKIPAPER_DESCRIPTION, ANKIPAPER_NAME
     from app.web.seo import canonical_url, og_image_url, webapplication_jsonld

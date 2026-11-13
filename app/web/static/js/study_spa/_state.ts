@@ -24,7 +24,7 @@ export function createCtx(root: HTMLElement, cfg: StudySpaConfig): SpaCtx {
   return {
     root,
     cfg,
-    base: '/deck/' + cfg.deckId + '/spa',
+    base: '/deck/' + cfg.deckId,
     state: null,
     busy: false,
     inflight: null,

@@ -6,7 +6,7 @@ describe('createCtx', () => {
   it('builds the base path from deckId', () => {
     const root = makeRoot();
     const ctx = createCtx(root, makeCfg({ deckId: 7 }));
-    expect(ctx.base).toBe('/deck/7/spa');
+    expect(ctx.base).toBe('/deck/7');
   });
 
   it('wires root and cfg through unchanged', () => {

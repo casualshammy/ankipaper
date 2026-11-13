@@ -20,5 +20,5 @@
       "csrfToken": {{ csrf_token(request) | tojson }}
     }
   </script>
-  <script src="/static/js/study_spa.js" defer></script>
+  <script src="/static/js/study_spa.js?v={{ bundle_v }}" defer></script>
 {% endblock %}

@@ -208,7 +208,7 @@ describe('createRender', () => {
       const ctx = makeCtx({ deckId: 5 });
       const { render } = createRender(ctx);
       render(makeState());
-      expect(history.replaceState).toHaveBeenCalledWith(null, '', '/deck/5/spa');
+      expect(history.replaceState).toHaveBeenCalledWith(null, '', '/deck/5');
     });
   });
 

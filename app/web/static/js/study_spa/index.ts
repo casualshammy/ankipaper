@@ -48,7 +48,7 @@ import type { StudyApiError, StudySpaConfig, StudyState } from './_types';
   attachEvents(ctx, actions);
 
   api<StudyState>('GET', ctx.base + '/state', null).then(renderApi.render, (e: StudyApiError) => {
-    if (e && (e.message === 'unauth' || e.message === 'csrf' || e.message === 'spa-disabled')) return;
+    if (e && (e.message === 'unauth' || e.message === 'csrf' || e.message === 'not-found')) return;
     showFatal(root, 'Failed to load. Please refresh.');
   });
 })();

@@ -66,7 +66,7 @@ Clone repository. Then from the repository root:
 
 ```bash
 cp deploy/.env.example .env && cp deploy/docker-compose.yml docker-compose.yml
-docker compose up --build
+docker compose up
 ```
 
 The Compose stack starts:
