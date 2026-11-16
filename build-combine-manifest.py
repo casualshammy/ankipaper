@@ -1,5 +1,5 @@
 import os
-from build_common import git, docker, utils
+from build_common import git, utils
 
 dockerRepo = os.getenv('DOCKER_REPO')
 if dockerRepo == None:

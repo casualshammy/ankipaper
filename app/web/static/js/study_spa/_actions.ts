@@ -63,12 +63,26 @@ export function createActions(
       );
   }
 
+  /**
+   * Read the "type in the answer" input of the card (Anki's
+   * ``{{type:Field}}`` placeholder renders it server-side).
+   * @returns The typed text, or an empty string when the card has no such box.
+   */
+  function typedAnswer(): string {
+    const input = ctx.root.querySelector<HTMLInputElement>('input[name="typed_answer"]');
+    return input && input.value ? input.value : '';
+  }
+
   function onReveal(): Promise<void> {
     if (!ctx.state || !ctx.state.card) return Promise.resolve();
     const card = ctx.state.card;
     const body = new FormData();
     body.append('card_id', String(card.card_id));
-    return api<StudyState>('POST', ctx.base + '/reveal', body).then(render);
+    body.append('typed_answer', typedAnswer());
+    return api<StudyState>('POST', ctx.base + '/reveal', body).then(render, (e) => {
+      const msg = errorMessageFn(e);
+      showErrorFn(msg || 'Reveal failed — try a shorter answer');
+    });
   }
 
   function onAnswer(rate: number): Promise<void> {
@@ -96,7 +110,7 @@ export function createActions(
       (r) => {
         card.is_marked = r.is_marked;
         setMarkOptimistic(r.is_marked);
-        if (r.undo) 
+        if (r.undo)
           setUndoState(r.undo);
       },
       () => {
@@ -118,7 +132,7 @@ export function createActions(
       (r) => {
         card.flag = r.flag;
         setFlagOptimistic(r.flag);
-        if (r.undo) 
+        if (r.undo)
           setUndoState(r.undo);
       },
       () => {

@@ -282,6 +282,43 @@ img:not([src]) {
   text-decoration: underline;
 }
 
+/* Type-in-the-answer cards ---------------------------------------------- */
+/* The question side of such a card renders a text input (the server
+   replaces Anki's ``[[type:Field]]`` placeholder with it), the answer
+   side renders Anki's typed-vs-correct comparison. Anki marks the parts
+   of the comparison with colours — invisible on e-ink — so we use weight
+   and line styles instead. */
+.type-answer {
+  display: block;
+  max-width: 480px;
+  margin: 12px auto;
+  text-align: left;
+}
+
+.card .typeGood,
+.card .typeBad,
+.card .typeMissed {
+  color: #000000 !important;
+}
+
+.card .typeGood {
+  font-weight: bold;
+}
+
+.card .typeBad {
+  text-decoration: line-through;
+}
+
+.card .typeMissed {
+  font-style: italic;
+}
+
+.card code#typeans {
+  font-family: inherit;
+  font-size: 1em;
+  white-space: pre-wrap;
+}
+
 /* Ratings -------------------------------------------------------------- */
 .ratings {
   display: flex;

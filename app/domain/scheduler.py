@@ -22,6 +22,7 @@ from anki.cards import CardId, CardType
 from anki.decks import DeckId
 from anki.errors import UndoEmpty
 
+from app.domain.type_answer import resolve_type_placeholders
 from app.storage.account import Account
 from app.toolkit import get_account_logger
 
@@ -529,6 +530,7 @@ def get_card_view(
     col: anki.collection.Collection,
     card_id: int,
     intervals: CardIntervals | None = None,
+    typed_answer: str = "",
 ) -> CardView | None:
     """Returns the render view of a specific card, or None.
 
@@ -537,10 +539,12 @@ def get_card_view(
         card_id: card id.
         intervals: interval preview; passed through the form from the
             front page.
+        typed_answer: what the user typed into the "type in the answer"
+            box of the question side (empty if the card has no such box).
     """
 
     try:
-        return _load_card_view(col, card_id, intervals)
+        return _load_card_view(col, card_id, intervals, typed_answer)
     except anki.errors.NotFoundError:
         return None
 
@@ -699,6 +703,7 @@ def _load_card_view(
     col: anki.collection.Collection,
     card_id: int,
     intervals: CardIntervals | None = None,
+    typed_answer: str = "",
 ) -> CardView:
     """Builds a CardView for a card by id.
 
@@ -708,17 +713,28 @@ def _load_card_view(
         intervals: interval preview (see ``_compute_intervals``). If
             ``None`` — the ``intervals`` field will be ``None``, and the
             template will show ``"—"`` on the back page.
+        typed_answer: what the user typed into the "type in the answer"
+            box of the question side (empty if the card has no such box).
     """
 
     card = col.get_card(CardId(card_id))
     note = card.note()
     notetype = card.note_type()
 
+    question_html, answer_html = resolve_type_placeholders(
+        col,
+        _field_html_map(notetype, note),
+        card.question(),
+        card.answer(),
+        typed_answer=typed_answer,
+        cloze_ordinal=int(card.ord) + 1,
+    )
+
     return CardView(
         card_id=int(card_id),
         deck_id=card.did,
-        question_html=_sanitize_for_eink(card.question()),
-        answer_html=_sanitize_for_eink(card.answer()),
+        question_html=_sanitize_for_eink(question_html),
+        answer_html=_sanitize_for_eink(answer_html),
         is_cloze=notetype.get("type") == anki.collection.MODEL_CLOZE,
         note_type_name=str(notetype.get("name", "")),
         fields=_extract_fields(notetype, note),
@@ -727,6 +743,15 @@ def _load_card_view(
         flag=int(card.user_flag()),
         is_marked=note.has_tag("marked"),
     )
+
+
+def _field_html_map(notetype, note) -> dict[str, str]:
+    """Build a ``field name -> raw HTML`` map for the note's fields."""
+
+    return {
+        _field_name(spec): value
+        for spec, value in zip(notetype.get("flds", []), list(note.fields), strict=True)
+    }
 
 
 def _extract_fields(notetype, note) -> list[tuple[str, str]]:

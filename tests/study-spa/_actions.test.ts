@@ -179,6 +179,32 @@ describe('createActions', () => {
       expect(render).toHaveBeenCalled();
     });
 
+    it('sends the answer typed into the "type in the answer" box', async () => {
+      const { ctx, api, actions } = makeActionDeps();
+      ctx.state = makeState({ card: makeCard({ card_id: 17 }) });
+      const input = document.createElement('input');
+      input.setAttribute('name', 'typed_answer');
+      input.value = 'esker ridge';
+      ctx.root.appendChild(input);
+      api.mockResolvedValueOnce(makeState({ phase: 'back' }));
+
+      await actions.onReveal();
+
+      const body = api.mock.calls[0][2] as FormData;
+      expect(body.get('typed_answer')).toBe('esker ridge');
+    });
+
+    it('sends an empty typed answer when the card has no type-in box', async () => {
+      const { ctx, api, actions } = makeActionDeps();
+      ctx.state = makeState({ card: makeCard({ card_id: 17 }) });
+      api.mockResolvedValueOnce(makeState({ phase: 'back' }));
+
+      await actions.onReveal();
+
+      const body = api.mock.calls[0][2] as FormData;
+      expect(body.get('typed_answer')).toBe('');
+    });
+
     it('no-ops when there is no current card', async () => {
       const { ctx, api, actions } = makeActionDeps();
       ctx.state = makeState({ card: null });

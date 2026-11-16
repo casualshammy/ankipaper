@@ -113,14 +113,15 @@ async def study_spa_state_get(
 async def study_spa_reveal_post(
     deck_id: int,
     card_id: int = Form(gt=0),
+    typed_answer: str = Form("", max_length=512),
     account: Account | None = Depends(get_current_account_optional),
     _: None = Depends(require_csrf),
 ) -> JSONResponse:
   if account is None:
     return _unauth()
-  
+
   logger = get_account_logger(_common_logger, account.id)
-  payload = await _build_back_payload(account, deck_id, card_id, "", logger)
+  payload = await _build_back_payload(account, deck_id, card_id, "", logger, typed_answer)
   if payload is None:
     payload = await _build_front_payload(account, deck_id, "", logger)
 
@@ -323,11 +324,12 @@ async def _build_back_payload(
   card_id: int,
   error_msg: str,
   logger: logging.Logger,
+  typed_answer: str = "",
 ) -> StudyStatePayload | None:
   """Back-phase payload; ``None`` if the card no longer exists."""
 
   intervals = await account.run(get_card_intervals, card_id)
-  view = await account.run(get_card_view, card_id, intervals)
+  view = await account.run(get_card_view, card_id, intervals, typed_answer)
   if view is None:
     return None
   

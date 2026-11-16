@@ -1,21 +1,5 @@
 import os
-import re
-from build_common import git, docker
-
-appInitPath = os.path.join("app", "__init__.py")
-
-def _adjust_app_version(_version: str) -> None:
-  # Stamps the build version into app/__init__.py (Python analog of adjust_csproj_version).
-  if (not os.path.isfile(appInitPath)):
-    raise FileNotFoundError(f"File '{appInitPath}' is not found")
-  with open(appInitPath, "r", encoding="utf-8") as appInitFile:
-    content = appInitFile.read()
-  adjustedContent, matchCount = re.subn(r'^__version__ = ".*"$', f'__version__ = "{_version}"', content, flags=re.MULTILINE)
-  if (matchCount != 1):
-    raise Exception(f"Can't adjust version in file '{appInitPath}'")
-  with open(appInitPath, "w", encoding="utf-8") as appInitFile:
-    appInitFile.write(adjustedContent)
-  print(f"Adjusted version in file '{appInitPath}'", flush=True)
+from build_common import git, docker, packages
 
 dockerRepo = os.getenv('DOCKER_REPO')
 if dockerRepo == None:
@@ -40,7 +24,9 @@ print(f"Creating docker image...", flush=True)
 print(f"Version: '{version}'", flush=True)
 print(f"Arch: '{buildArch}'", flush=True)
 print(f"===========================================", flush=True)
-_adjust_app_version(version)
+
+packages.adjust_python_version(os.path.join("app", "__init__.py"), version)
+
 docker.buildPushMultiArch(
   _tags=[f"{dockerRepo}:{version}-{buildArch}"],
   _dockerfile="Dockerfile",
