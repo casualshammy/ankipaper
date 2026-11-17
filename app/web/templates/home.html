@@ -4,14 +4,37 @@
   <td class="num">{% if value != 0 %}<span class="num-non-zero">{{ value }}</span>{% else %}{{ value }}{% endif %}</td>
 {%- endmacro %}
 
+{% macro deck_rows(nodes, depth, hidden) -%}
+  {% for d in nodes %}
+    <tr class="deck-row{% if hidden %} is-hidden{% endif %}" data-depth="{{ depth }}" data-deck-id="{{ d.deck_id }}" data-collapsed="{{ 1 if d.collapsed else 0 }}">
+      <td class="deck-name" style="padding-left: {{ depth * 18 }}px">
+        {% if d.children %}
+          <button type="button" class="deck-toggle" data-action="toggle-deck" data-deck-id="{{ d.deck_id }}" aria-label="Toggle subdecks of {{ d.path }}"></button>
+        {% endif %}
+        <a class="deck-link" href="/deck/{{ d.deck_id }}" title="{{ d.path }}">{{ d.name }}</a>
+      </td>
+      {{ cell_num(d.new) }}
+      {{ cell_num(d.learning) }}
+      {{ cell_num(d.review) }}
+    </tr>
+    {% if d.children %}
+      {{ deck_rows(d.children, depth + 1, hidden or d.collapsed) }}
+    {% endif %}
+  {% endfor %}
+{%- endmacro %}
+
 {% block title %}Decks — AnkiPaper{% endblock %}
 
 {% block robots %}noindex, nofollow{% endblock %}
 
+{% block styles %}
+  <link rel="stylesheet" href="/static/css/decks.css">
+{% endblock %}
+
 {% block nav %}
   <form method="post" action="/sync" class="nav-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-    <button type="submit" class="btn">Sync{% if sync_required %} ●{% endif %}</button>
+    <button type="submit" class="btn">Sync<span id="sync-indicator">{% if sync_required %} ●{% endif %}</span></button>
   </form>
   <form method="post" action="/logout" class="nav-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
@@ -44,7 +67,7 @@
   {% elif not decks %}
     <p class="muted">No decks found.</p>
   {% else %}
-    <table class="decks">
+    <table class="decks" id="deck-tree" data-csrf="{{ csrf_token(request) }}">
       <thead>
         <tr>
           <th>Deck</th>
@@ -54,15 +77,13 @@
         </tr>
       </thead>
       <tbody>
-        {% for d in decks %}
-          <tr>
-            <td><a class="deck-link" href="/deck/{{ d.deck_id }}">{{ d.name }}</a></td>
-            {{ cell_num(d.new) }}
-            {{ cell_num(d.learning) }}
-            {{ cell_num(d.review) }}
-          </tr>
-        {% endfor %}
+        {{ deck_rows(decks, 0, false) }}
       </tbody>
     </table>
+    <p class="error" id="deck-tree-error" hidden></p>
   {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/js/deck_tree.js?v={{ bundle_v }}" defer></script>
 {% endblock %}

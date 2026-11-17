@@ -23,6 +23,7 @@ RUN pip install --upgrade pip \
 
 COPY app ./app
 COPY --from=js-builder /build/app/web/static/js/study_spa.js ./app/web/static/js/study_spa.js
+COPY --from=js-builder /build/app/web/static/js/deck_tree.js ./app/web/static/js/deck_tree.js
 
 RUN useradd --create-home --uid 1000 ankipaper \
     && mkdir -p /data \

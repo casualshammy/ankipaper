@@ -10,3 +10,5 @@ Anki-Android-main/
 .redis/
 /node_modules/
 app/web/static/js/study_spa.js
+app/web/static/js/deck_tree.js
+/build/lib/

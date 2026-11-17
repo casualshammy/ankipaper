@@ -1,0 +1,49 @@
+/* Deck tree (home page) ------------------------------------------------ */
+/* Loaded only by templates that fill the {% block styles %} of base.html. */
+
+/* A row is hidden when one of its ancestors is collapsed. */
+table.decks tr.deck-row.is-hidden {
+  display: none;
+}
+
+table.decks td.deck-name {
+  white-space: nowrap;
+}
+
+/* The toggle is a bare button: the triangle is drawn with CSS borders
+   (font glyphs may not render on e-ink screens). */
+.deck-toggle {
+  width: 28px;
+  height: 28px;
+  margin: 0 4px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.deck-toggle::before {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0;
+  border-color: transparent;
+  vertical-align: middle;
+}
+
+/* Expanded (data-collapsed="0"): triangle points down. */
+table.decks tr.deck-row[data-collapsed="0"] .deck-toggle::before {
+  border-top: 8px solid #000000;
+  border-right-width: 6px;
+  border-left-width: 6px;
+}
+
+/* Collapsed (data-collapsed="1"): triangle points right. */
+table.decks tr.deck-row[data-collapsed="1"] .deck-toggle::before {
+  border-left: 8px solid #000000;
+  border-top-width: 6px;
+  border-bottom-width: 6px;
+}

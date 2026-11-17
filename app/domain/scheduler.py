@@ -11,7 +11,7 @@ import logging
 import re
 import time
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Literal
 
@@ -19,7 +19,7 @@ import anki.collection
 import anki.errors
 import anki.scheduler_pb2 as sp
 from anki.cards import CardId, CardType
-from anki.decks import DeckId
+from anki.decks import DeckCollapseScope, DeckId
 from anki.errors import UndoEmpty
 
 from app.domain.type_answer import resolve_type_placeholders
@@ -91,10 +91,17 @@ class DeckStats:
 
     deck_id: int
     name: str
+    """Own name of the deck (the last segment of its full path)."""
+    path: str
+    """Full deck path (``parent::child``)."""
     new: int
     learning: int
     review: int
     is_filtered: bool = False
+    collapsed: bool = False
+    """True if the deck is collapsed in the browser scope."""
+    children: list[DeckStats] = field(default_factory=list)
+    """Child decks; empty for leaf decks."""
 
 
 @dataclass(slots=True)
@@ -239,7 +246,7 @@ def _walk_deck_tree(nodes: Iterable) -> Iterator:
 
 
 def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
-    """Returns statistics for all decks (new / learning / review).
+    """Returns the deck tree with statistics for every deck.
 
     Uses the backend deck tree so reading the home page does not change
     ``curDeck``. Selecting every deck before calling ``get_queued_cards``
@@ -248,25 +255,74 @@ def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
     """
 
     tree = col._backend.deck_tree(now=int(time.time()))  # type: ignore[attr-defined]
+    return _build_deck_nodes(col, tree.children, "")
+
+
+def _build_deck_nodes(
+    col: anki.collection.Collection,
+    nodes: Iterable,
+    parent_path: str,
+) -> list[DeckStats]:
+    """Builds a list of :class:`DeckStats` (with children) from deck-tree nodes."""
+
     result: list[DeckStats] = []
-
-    def _append_nodes(nodes, parent_name: str = "") -> None:
-        for node in nodes:
-            name = f"{parent_name}::{node.name}" if parent_name else str(node.name)
-            result.append(
-                DeckStats(
-                    deck_id=int(node.deck_id),
-                    name=name,
-                    new=int(node.new_count),
-                    learning=int(node.learn_count),
-                    review=int(node.review_count),
-                    is_filtered=bool(node.filtered),
-                )
+    for node in nodes:
+        name = str(node.name)
+        path = f"{parent_path}::{name}" if parent_path else name
+        children = _build_deck_nodes(col, node.children, path)
+        result.append(
+            DeckStats(
+                deck_id=int(node.deck_id),
+                name=name,
+                path=path,
+                new=int(node.new_count),
+                learning=int(node.learn_count),
+                review=int(node.review_count),
+                is_filtered=bool(node.filtered),
+                collapsed=_is_browser_collapsed(col, int(node.deck_id)) if children else False,
+                children=children,
             )
-            _append_nodes(node.children, name)
-
-    _append_nodes(tree.children)
+        )
     return result
+
+
+def _is_browser_collapsed(col: anki.collection.Collection, deck_id: int) -> bool:
+    """True if the deck is collapsed in the browser scope.
+
+    The flag lives in the deck's ``browserCollapsed`` field — the same
+    key Anki itself reads (``pylib/anki/decks.py``). Only decks with
+    children can be collapsed, so leaf decks are never asked for it.
+    """
+
+    deck = col.decks.get(DeckId(deck_id), default=False)
+    if not deck:
+        return False
+    return bool(deck.get("browserCollapsed", False))
+
+
+def set_deck_collapsed(
+    col: anki.collection.Collection,
+    deck_id: int,
+    collapsed: bool,
+) -> None:
+    """Writes the ``browser_collapsed`` flag of a deck.
+
+    The BROWSER scope is used: it is the state shown in the Anki Desktop
+    deck sidebar and it is synced to AnkiWeb (unlike the reviewer scope).
+
+    Args:
+        col: open collection.
+        deck_id: id of the deck to collapse / expand.
+        collapsed: ``True`` to collapse the deck, ``False`` to expand it.
+
+    Raises:
+        ValueError: if the deck does not exist.
+    """
+
+    deck = col.decks.get(DeckId(deck_id), default=False)
+    if not deck:
+        raise ValueError(f"deck not found: {deck_id}")
+    col.decks.set_collapsed(DeckId(deck_id), collapsed, DeckCollapseScope.BROWSER)
 
 
 def get_deck_due_count(

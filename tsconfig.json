@@ -10,8 +10,9 @@
     "alwaysStrict": true,
     "skipLibCheck": true,
     "paths": {
-      "@spa/*": ["./app/web/static/js/study_spa/*"]
+      "@spa/*": ["./app/web/static/js/study_spa/*"],
+      "@deck/*": ["./app/web/static/js/deck_tree/*"]
     }
   },
-  "include": ["app/web/static/js/**/*.ts", "tests/study-spa/**/*.ts"]
+  "include": ["app/web/static/js/**/*.ts", "tests/study-spa/**/*.ts", "tests/deck-tree/**/*.ts"]
 }
