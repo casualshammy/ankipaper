@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { applyVisibility, collectRows, findRow, setCollapsed } from '@deck/_tree';
+import { applyVisibility, collectRows, findRow, setCollapsed } from '@home/_tree';
 
 interface RowSpec {
   deckId: number;

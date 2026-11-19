@@ -1,5 +1,5 @@
 // Pure deck-tree logic — no network access. The DOM is the source of
-// truth for the collapsed state; the toggle request lives in index.ts.
+// truth for the collapsed state; the toggle request lives in _init.ts.
 
 export interface DeckRow {
   el: HTMLTableRowElement;

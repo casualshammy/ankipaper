@@ -1,39 +1,41 @@
-// Deck-tree bootstrap for the home page. Wires the toggle buttons of
-// the deck tree to POST /deck/{id}/collapse and keeps the DOM in sync
-// with the state stored in the collection.
-//
-// esbuild bundles this into app/web/static/js/deck_tree.js.
-
 import { applyVisibility, collectRows, findRow, setCollapsed } from './_tree';
 import type { DeckRow } from './_tree';
 
-(function () {
-  const table = document.getElementById('deck-tree');
-  if (!table) return;
+/**
+ * Marks the Sync button as "changes pending".
+ */
+export function markSyncRequired(): void {
+  const indicator = document.getElementById('sync-indicator');
+  if (!indicator) return;
+  indicator.textContent = ' ●';
+}
 
+/**
+ * Wires the collapse/expand buttons of a deck tree.
+ *
+ * @param table The `table#deck-tree` element holding the deck rows.
+ * @param errorEl Element that shows POST errors. When omitted, the
+ *   element is looked up next to the table (`#deck-tree-error`).
+ */
+export function initDeckTree(
+  table: HTMLElement, 
+  errorEl: HTMLElement | null = null
+): void {
   const csrf = table.getAttribute('data-csrf') || '';
-  const errorEl = document.getElementById('deck-tree-error');
+  const error = errorEl || table.parentElement?.querySelector<HTMLElement>('#deck-tree-error') || null;
 
   let busy = false;
 
   function showError(message: string): void {
-    if (!errorEl) return;
-    errorEl.textContent = message;
-    errorEl.hidden = false;
+    if (!error) return;
+    error.textContent = message;
+    error.hidden = false;
   }
 
   function clearError(): void {
-    if (!errorEl) return;
-    errorEl.textContent = '';
-    errorEl.hidden = true;
-  }
-
-  // Writing to the collection raises the USN — the decks have to be
-  // synced, exactly like in Anki Desktop.
-  function markSyncRequired(): void {
-    const indicator = document.getElementById('sync-indicator');
-    if (!indicator) return;
-    indicator.textContent = ' ●';
+    if (!error) return;
+    error.textContent = '';
+    error.hidden = true;
   }
 
   function rollback(rows: DeckRow[], row: DeckRow, collapsed: boolean): void {
@@ -90,7 +92,7 @@ import type { DeckRow } from './_tree';
     if (!button) return;
     ev.preventDefault();
 
-    if (busy) 
+    if (busy)
       return;
 
     const deckId = Number(button.getAttribute('data-deck-id'));
@@ -109,4 +111,4 @@ import type { DeckRow } from './_tree';
 
   // Sync the DOM with the server-rendered state.
   applyVisibility(collectRows(table));
-})();
+}
