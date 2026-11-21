@@ -7,7 +7,8 @@ table.decks tr.deck-row.is-hidden {
 }
 
 table.decks td.deck-name {
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* The toggle is a bare button: the triangle is drawn with CSS borders
