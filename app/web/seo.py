@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from app import __version__
 from app.toolkit import ANKIPAPER_DESCRIPTION, ANKIPAPER_NAME
 
 if TYPE_CHECKING:
@@ -64,7 +65,7 @@ def og_image_url(request: Request) -> str:
 
     settings = get_settings()
     base = resolve_origin(request, settings)
-    return f"{base}/static/og.png"
+    return f"{base}/static/og.png?v={__version__}"
 
 
 def webapplication_jsonld(request: Request) -> str:

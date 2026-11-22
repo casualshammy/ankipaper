@@ -18,13 +18,13 @@
   <meta name="twitter:description" content="{% block twitter_description %}{{ default_description }}{% endblock %}">
   <meta name="twitter:image" content="{{ og_image_url(request) }}">
   {% block structured_data %}{% endblock %}
-  <link rel="icon" href="/static/favicon.ico">
-  <link rel="stylesheet" href="/static/css/eink.css">
+  <link rel="icon" href="/static/favicon.ico?v={{ version }}">
+  <link rel="stylesheet" href="/static/css/eink.css?v={{ version }}">
   {% block styles %}{% endblock %}
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/"><img class="brand-icon" src="/static/app_icon_256.webp" alt="{{ brand_name }} logo"><span class="brand-text">{% block brand_text %}{{ brand_name }}{% endblock %}</span></a>
+    <a class="brand" href="/"><img class="brand-icon" src="/static/app_icon_256.webp?v={{ version }}" alt="{{ brand_name }} logo"><span class="brand-text">{% block brand_text %}{{ brand_name }}{% endblock %}</span></a>
     <nav class="nav">
       {% block nav %}
         <form method="post" action="/sync" class="nav-form">
@@ -45,7 +45,7 @@
     {% block footer %}
       <span><a href="https://github.com/casualshammy/ankipaper">GitHub</a></span>
       {% if show_privacy_policy %}
-        <span>| <a href="/static/privacy_policy.html">Privacy Policy</a></span>
+        <span>| <a href="/static/privacy_policy.html?v={{ version }}">Privacy Policy</a></span>
       {% endif %}
       {% if contacts_email %}
         <span>| <a href="mailto:{{ contacts_email }}">Contact Us</a></span>
