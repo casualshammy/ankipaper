@@ -5,7 +5,7 @@ from __future__ import annotations
 from prometheus_client import Counter, Histogram
 
 # Latency buckets cover the full range from a cached static asset to
-# a full sync. Anything slower than 10 s lands in the implicit +Inf bucket.
+# a full sync. Anything slower than 60 s lands in the implicit +Inf bucket.
 _LATENCY_BUCKETS = (
     0.005,
     0.01,
@@ -18,6 +18,9 @@ _LATENCY_BUCKETS = (
     2.5,
     5.0,
     10.0,
+    20.0,
+    30.0,
+    60.0,
 )
 
 

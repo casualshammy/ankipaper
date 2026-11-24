@@ -22,6 +22,10 @@ _MEDIA_DIR_NAME = "collection.media"
 
 T = TypeVar("T")
 
+# A timing breakdown is logged when any of its parts exceeds this
+# threshold (milliseconds). Below it the log would be pure noise.
+_LOG_SLOW_MS: float = 200.0
+
 
 class AccountBase:
     """
@@ -116,27 +120,84 @@ class Account(AccountBase):
             **kwargs: keyword arguments for ``fn``.
         """
 
-        async with self._lock:
-            self._ensure_collection_open()
-            self._last_access = time.monotonic()
-            assert self._collection is not None
-            return await asyncio.to_thread(fn, self._collection, *args, **kwargs)
+        def _call(col: anki.collection.Collection) -> T:
+            return fn(col, *args, **kwargs)
+
+        return await self._execute(_call, getattr(fn, "__name__", "fn"))
 
     async def run_extended(
-        self, 
-        fn: Callable[Concatenate[Account, anki.collection.Collection, ...], T], 
-        *args: Any, 
+        self,
+        fn: Callable[Concatenate[Account, anki.collection.Collection, ...], T],
+        *args: Any,
         **kwargs: Any) -> T:
         """
-        Runs the synchronous function ``fn`` with the collection open, 
+        Runs the synchronous function ``fn`` with the collection open,
         passing the account and the collection as the first two arguments.
         """
 
-        async with self._lock:
+        def _call(col: anki.collection.Collection) -> T:
+            return fn(self, col, *args, **kwargs)
+
+        return await self._execute(_call, getattr(fn, "__name__", "fn"))
+
+    async def _execute(self, fn: Callable[[anki.collection.Collection], T], label: str) -> T:
+        """Runs ``fn`` under the account lock and logs a timing breakdown.
+
+        Three delays are measured separately, because they have completely
+        different causes:
+
+        * ``lock_wait`` — waiting for the per-account lock. Long waits mean
+          someone else holds it: a running background sync, or an AnkiWeb
+          probe (``is_sync_required_or_throw``) that does its network
+          round-trip inside the lock.
+        * ``worker_wait`` — waiting for a free worker of the default
+          thread-pool executor (``min(32, cpu+4)`` workers). A long wait
+          means the pool is exhausted: a cancelled AnkiWeb probe keeps its
+          worker busy until the HTTP call actually returns.
+        * ``call`` — the actual work of ``fn``.
+
+        Args:
+            fn: function ``(collection) -> T``, called in a worker thread.
+            label: name used in the log line.
+        """
+
+        t_lock = time.monotonic()
+        await self._lock.acquire()
+        try:
+            lock_wait_ms = (time.monotonic() - t_lock) * 1000.0
+
+            t_open = time.monotonic()
             self._ensure_collection_open()
+            open_ms = (time.monotonic() - t_open) * 1000.0
+
             self._last_access = time.monotonic()
-            assert self._collection is not None
-            return await asyncio.to_thread(fn, self, self._collection, *args, **kwargs)
+            col = self._collection
+            assert col is not None
+
+            started: list[float] = []
+
+            def _runner() -> T:
+                started.append(time.monotonic())
+                return fn(col)
+
+            t_submit = time.monotonic()
+            result = await asyncio.to_thread(_runner)
+            worker_wait_ms = (started[0] - t_submit) * 1000.0 if started else -1.0
+            call_ms = (time.monotonic() - started[0]) * 1000.0 if started else -1.0
+
+            if max(lock_wait_ms, worker_wait_ms, call_ms) >= _LOG_SLOW_MS:
+                self._logger.info(
+                    "account.run[%s]: lock_wait=%.0fms worker_wait=%.0fms "
+                    "open=%.0fms call=%.0fms",
+                    label,
+                    lock_wait_ms,
+                    worker_wait_ms,
+                    open_ms,
+                    call_ms,
+                )
+            return result
+        finally:
+            self._lock.release()
 
     async def peek(
         self,

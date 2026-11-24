@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import enum
 import logging
+import time
 from dataclasses import dataclass
 from typing import Never
 
@@ -17,6 +18,16 @@ from app.storage.account import Account
 from app.sync.auth import is_auth_error, make_auth
 
 logger = logging.getLogger(__name__)
+
+# Client-visible cap for the AnkiWeb sync-status probe.
+_PROBE_TIMEOUT_SECONDS = 3.0
+
+# A probe slower than this is logged (the Rust side caches the answer for
+# 300 s, so a slow probe usually means a slow AnkiWeb).
+_PROBE_SLOW_SECONDS = 0.5
+
+# Number of probes currently awaiting an AnkiWeb answer.
+_probes_inflight = 0
 
 
 class FullSyncKind(enum.Enum):
@@ -210,14 +221,44 @@ async def is_sync_required_or_throw(
     account: Account,
     endpoint: str | None,
 ) -> tuple[bool, str | None]:
-    """Calls ``col.sync_status`` and returns ``(required, new_endpoint)``."""
+    """Calls ``col.sync_status`` and returns ``(required, new_endpoint)``.
+
+    The AnkiWeb round-trip happens inside the account lock and inside a
+    thread-pool worker. ``asyncio.wait_for`` caps only the *await*: when it
+    fires, the worker thread keeps running until the HTTP call really
+    returns (the Rust sync client uses a 30 s I/O timeout), so a slow
+    AnkiWeb pins an executor worker for much longer than the caller waits.
+    """
+
+    global _probes_inflight
 
     host_key = account.host_key()
     if host_key is None:
         raise AuthExpiredError()
 
     auth = make_auth(host_key, endpoint)
-    status = await asyncio.wait_for(account.run(_collection_sync_status, auth), timeout=3.0) 
+    t0 = time.monotonic()
+    _probes_inflight += 1
+    try:
+        status = await asyncio.wait_for(
+            account.run(_collection_sync_status, auth),
+            timeout=_PROBE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "AnkiWeb sync-status probe timed out after %.1fs "
+            "(inflight=%d); the worker thread keeps running until the HTTP "
+            "call returns and keeps holding an executor worker",
+            time.monotonic() - t0,
+            _probes_inflight,
+        )
+        raise
+    finally:
+        _probes_inflight -= 1
+
+    elapsed = time.monotonic() - t0
+    if elapsed >= _PROBE_SLOW_SECONDS:
+        logger.info("AnkiWeb sync-status probe took %.2fs", elapsed)
     return bool(status.required), status.new_endpoint or None
 
 
