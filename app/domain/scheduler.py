@@ -8,6 +8,7 @@ not through direct SQL.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from collections.abc import Iterable, Iterator
@@ -245,6 +246,10 @@ def _walk_deck_tree(nodes: Iterable) -> Iterator:
         yield from _walk_deck_tree(node.children)
 
 
+# A deck-tree read slower than this is logged with a breakdown.
+_SLOW_DECK_STATS_MS: float = 200.0
+
+
 def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
     """Returns the deck tree with statistics for every deck.
 
@@ -252,10 +257,114 @@ def list_deck_stats(col: anki.collection.Collection) -> list[DeckStats]:
     ``curDeck``. Selecting every deck before calling ``get_queued_cards``
     marked the collection as modified and caused ``sync_status`` to report
     pending changes immediately after a successful sync.
+
+    Anki performs its daily rollover inside ``deck_tree()``: the cards
+    buried on a previous day are restored with one UPDATE per card. That
+    work is O(buried cards) and happens once per Anki day, so on a slow
+    disk it turns the first page load of the day into a multi-second
+    request. It is done explicitly here to keep the two costs apart.
     """
 
+    t_rollover = time.monotonic()
+    _run_daily_rollover(col)
+    rollover_ms = (time.monotonic() - t_rollover) * 1000.0
+
+    t_tree = time.monotonic()
     tree = col._backend.deck_tree(now=int(time.time()))  # type: ignore[attr-defined]
-    return _build_deck_nodes(col, tree.children, "")
+    tree_ms = (time.monotonic() - t_tree) * 1000.0
+
+    t_build = time.monotonic()
+    result = _build_deck_nodes(col, tree.children, "")
+    build_ms = (time.monotonic() - t_build) * 1000.0
+
+    if max(rollover_ms, tree_ms, build_ms) >= _SLOW_DECK_STATS_MS:
+        _log_slow_deck_stats(col, rollover_ms, tree_ms, build_ms)
+
+    return result
+
+
+def _run_daily_rollover(col: anki.collection.Collection) -> None:
+    """Performs Anki's daily rollover: unbury the cards buried yesterday.
+
+    ``col.sched.today`` maps to the ``SchedTimingToday`` backend call, which
+    restores every card buried on a previous day and stores the current day
+    in the ``lastUnburied`` config key. Afterwards ``deck_tree()`` finds
+    nothing left to do, so the cost is paid exactly once per Anki day.
+
+    The call is a no-op (a config lookup) when the rollover already
+    happened today.
+    """
+
+    try:
+        _ = col.sched.today
+    except Exception:  # pragma: no cover - diagnostics only
+        _common_logger.exception("daily rollover failed")
+
+
+def _log_slow_deck_stats(
+    col: anki.collection.Collection,
+    rollover_ms: float,
+    tree_ms: float,
+    build_ms: float,
+) -> None:
+    """Logs why the deck tree was slow.
+
+    ``rollover_ms`` is the daily unbury (one UPDATE per buried card),
+    ``tree_ms`` is the deck tree itself (a full scan of the ``cards`` table
+    for the due counts), ``build_nodes`` is the legacy per-deck lookup for
+    the collapsed flag.
+
+    ``deck_tree(now=0)`` skips the counts, so comparing it with
+    ``tree_ms`` separates "the scan is slow" from "the tree build is slow".
+    """
+
+    try:
+        cards = col.card_count()
+        notes = col.note_count()
+    except Exception:  # pragma: no cover - diagnostics only
+        cards = notes = -1
+
+    db_bytes = -1
+    try:
+        db_bytes = os.path.getsize(col.path)
+    except OSError:  # pragma: no cover - diagnostics only
+        pass
+
+    # The daily unbury restores every buried or suspended card with an
+    # individual UPDATE, so its cost is roughly proportional to this number
+    # - and it runs once per Anki day, which is why the first page load of
+    # the day is slow and every reload after it is instant.
+    buried = -1
+    buried_search_ms = -1.0
+    try:
+        t0 = time.monotonic()
+        buried = len(col.find_cards("is:buried"))
+        buried_search_ms = (time.monotonic() - t0) * 1000.0
+    except Exception:  # pragma: no cover - diagnostics only
+        _common_logger.exception("counting buried cards failed")
+
+    no_counts_ms = -1.0
+    try:
+        t0 = time.monotonic()
+        col._backend.deck_tree(now=0)  # type: ignore[attr-defined]
+        no_counts_ms = (time.monotonic() - t0) * 1000.0
+    except Exception:  # pragma: no cover - diagnostics only
+        _common_logger.exception("deck_tree(now=0) failed")
+
+    _common_logger.info(
+        "list_deck_stats slow: rollover=%.0fms deck_tree=%.0fms "
+        "deck_tree_without_counts=%.0fms build_nodes=%.0fms buried_search=%.0fms "
+        "cards=%s notes=%s buried=%s db=%.1fMB",
+        rollover_ms,
+        tree_ms,
+        no_counts_ms,
+        build_ms,
+        buried_search_ms,
+        cards,
+        notes,
+        buried,
+        db_bytes / 1024 / 1024 if db_bytes >= 0 else -1.0,
+    )
 
 
 def _build_deck_nodes(
